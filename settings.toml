@@ -98,3 +98,4 @@ translation_context = """>STORY_INFO_START
 Example story data. The main character is the protagonist.
 >STORY_INFO_END
 """
+rate_limit = 15

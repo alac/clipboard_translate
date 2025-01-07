@@ -24,6 +24,7 @@ from ai_prompts import (should_generate_vocabulary_list, UIUpdateCommand, run_vo
 from library.get_dictionary_defs import get_definitions_string
 from library.settings_manager import settings
 from library.ai_requests import AI_SERVICE_GEMINI, AI_SERVICE_OOBABOOGA, AI_SERVICE_OPENAI
+from library.rate_limiter import RateLimiter
 
 
 CLIPBOARD_CHECK_LATENCY_MS = 250
@@ -138,6 +139,10 @@ class JpVocabUI:
         self.history_length = settings.get_setting('general.translation_history_length')
         self.history_states = []  # type: list[HistoryState]
         self.history_states_index = -1
+
+        rate_limit = settings.get_setting_fallback("general.rate_limit", None)
+        if rate_limit:
+            self.rate_limiter = RateLimiter(requests_per_minute=rate_limit)
 
     def on_ai_service_change(self, *_args):
         selected_service = self.ai_service.get()
@@ -761,6 +766,7 @@ class JpVocabUI:
                         self.last_command = command
 
                 if command.command_type == "translate":
+                    self.check_rate_limiter()
                     translate_with_context(command.history,
                                            command.sentence,
                                            update_queue=self.ui_update_queue,
@@ -772,6 +778,7 @@ class JpVocabUI:
                     prompt = (f"{self.ui_sentence}\n\n{self.ui_translation}\n\n"
                               f"Which translation is most accurate? Or are they equivalent?")
                     command.prompt = prompt
+                    self.check_rate_limiter()
                     ask_question(command.prompt, command.sentence, command.history, temp=command.temp,
                                  update_queue=self.ui_update_queue, update_token_key=command.update_token_key,
                                  api_override=command.api_override)
@@ -782,6 +789,7 @@ class JpVocabUI:
                             time.sleep(3 * UPDATE_LOOP_LATENCY_MS / 1000.0)
                         suggested_readings = self.ui_definitions
                         self.ui_definitions = ""
+                    self.check_rate_limiter()
                     translate_with_context_cot(command.history,
                                                command.sentence,
                                                update_queue=self.ui_update_queue,
@@ -791,9 +799,11 @@ class JpVocabUI:
                                                suggested_readings=suggested_readings)
                     self.ui_update_queue.put(UIUpdateCommand(command.update_token_key, command.sentence, "\n"))
                 if command.command_type == "define":
+                    self.check_rate_limiter()
                     run_vocabulary_list(command.sentence, temp=command.temp,
                                         update_queue=self.ui_update_queue, api_override=command.api_override)
                 if command.command_type == "qanda":
+                    self.check_rate_limiter()
                     ask_question(command.prompt, command.sentence, command.history, temp=command.temp,
                                  update_queue=self.ui_update_queue, api_override=command.api_override)
                 if command.command_type == "tts":
@@ -805,6 +815,10 @@ class JpVocabUI:
             except Exception as e:
                 print(e)
                 logging.error(f"Exception while running command: {e}")
+
+    def check_rate_limiter(self):
+        if self.rate_limiter:
+            self.rate_limiter.wait_if_needed()
 
     def update_status(self, root: tk.Tk):
         current_time_ms = time.time()
