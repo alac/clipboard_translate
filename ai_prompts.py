@@ -62,7 +62,7 @@ def run_vocabulary_list(sentence: str, temp: Optional[float] = None,
         return None
 
     last_tokens = []
-    for tok in run_ai_request_stream(prompt, ["</task>"], print_prompt=False,
+    for tok in run_ai_request_stream(prompt, ["</task>", "</example>"], print_prompt=False,
                                      temperature=temp, ban_eos_token=False, max_response=500,
                                      api_override=api_override):
         if request_interrupt_atomic_swap(False):
@@ -125,7 +125,7 @@ def translate_with_context(history, sentence, temp=None, style="",
         else:
             update_queue.put(UIUpdateCommand("translate", sentence, f"#{index}. "))
     for tok in run_ai_request_stream(prompt,
-                                     ["</english>", "</task>"],
+                                     ["</english>", "</task>", "</example>"],
                                      print_prompt=False, temperature=temp, ban_eos_token=False, max_response=100,
                                      api_override=api_override):
         if request_interrupt_atomic_swap(False):
@@ -192,7 +192,7 @@ def translate_with_context_cot(history, sentence, temp=None,
 
     last_tokens = []
     for tok in run_ai_request_stream(prompt,
-                                     ["</task>"],
+                                     ["</task>", "</example>"],
                                      print_prompt=False, temperature=temp, ban_eos_token=False, max_response=1000,
                                      api_override=api_override):
         if request_interrupt_atomic_swap(False):
@@ -256,7 +256,7 @@ def ask_question(question: str, sentence: str, history: list[str], temp: Optiona
         return None
 
     last_tokens = []
-    for tok in run_ai_request_stream(prompt, ["</answer>", "</task>"], print_prompt=False,
+    for tok in run_ai_request_stream(prompt, ["</answer>", "</task>", "</example>"], print_prompt=False,
                                      temperature=temp, ban_eos_token=False, max_response=1000,
                                      api_override=api_override):
         if request_interrupt_atomic_swap(False):

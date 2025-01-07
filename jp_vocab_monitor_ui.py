@@ -311,7 +311,16 @@ class JpVocabUI:
         # Run the Tkinter event loop
         root.after(200, lambda: self.update_status(root))
         root.bind("<Shift-Return>", lambda e: self.ask_question())
+        root.protocol("WM_DELETE_WINDOW", self.on_closing)
         root.mainloop()
+
+    def on_closing(self):
+        # write history on close
+        cache_file = os.path.join("translation_history", f"{self.source}.json")
+        with open(cache_file, 'w', encoding='utf-8') as f:
+            json.dump(self.history, f, indent=2)
+
+        self.tk_root.destroy()
 
     @staticmethod
     def create_tooltip(widget, text):
@@ -763,10 +772,6 @@ class JpVocabUI:
                                  self.ui_definitions, self.ui_question, self.ui_response, self.history[:])
                 )
                 self.history_states_index = len(self.history_states) - 1
-
-                cache_file = os.path.join("translation_history", f"{self.source}.json")
-                with open(cache_file, 'w', encoding='utf-8') as f:
-                    json.dump(self.history, f, indent=2)
             else:
                 if is_editing_textfield:
                     logging.info("Skipping textfield edit.")
