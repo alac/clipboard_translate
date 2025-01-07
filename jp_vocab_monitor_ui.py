@@ -10,9 +10,12 @@ import os.path
 import pyperclip
 import re
 import threading
-import time
 import tkinter as tk
 import logging
+from typing import List, Tuple
+import win32gui
+import win32con
+import time
 
 
 from ai_prompts import (should_generate_vocabulary_list, UIUpdateCommand, run_vocabulary_list,
@@ -146,7 +149,7 @@ class JpVocabUI:
         self.tk_root = root
 
         root.geometry("{}x{}+0+0".format(655, 500))
-        root.grid_rowconfigure(2, weight=1)
+        root.grid_rowconfigure(3, weight=1)
         root.grid_columnconfigure(0, weight=1)
 
         self.ai_service = tk.StringVar()
@@ -305,8 +308,45 @@ class JpVocabUI:
         )
         font_spinbox.pack(side=tk.LEFT, padx=2)
 
+        # Create third menu bar frame for auto-advance controls
+        third_menu_bar = tk.Frame(root)
+        third_menu_bar.grid(row=2, column=0, columnspan=6, sticky="ew")
+        third_menu_bar.grid_columnconfigure(1, weight=1)
+
+        # Auto-advance checkbox
+        self.auto_advance_enabled = tk.BooleanVar(value=False)
+        auto_advance_checkbox = tk.Checkbutton(
+            third_menu_bar,
+            text="Enable Auto-advance",
+            variable=self.auto_advance_enabled
+        )
+        auto_advance_checkbox.pack(side=tk.LEFT, padx=2)
+
+        # Target window dropdown
+        target_label = tk.Label(third_menu_bar, text="Target Window:")
+        target_label.pack(side=tk.LEFT, padx=2)
+
+        self.target_window_var = tk.StringVar()
+        self.window_list = self.get_window_list()
+        self.target_window_dropdown = tk.OptionMenu(
+            third_menu_bar,
+            self.target_window_var,
+            *[title for title, _ in self.window_list]
+        )
+        self.target_window_dropdown.pack(side=tk.LEFT, padx=2)
+
+        # Refresh button
+        refresh_button = tk.Button(
+            third_menu_bar,
+            text="🔄",
+            command=self.refresh_window_list,
+            font=('TkDefaultFont', 12)
+        )
+        self.create_tooltip(refresh_button, "Refresh Window List")
+        refresh_button.pack(side=tk.LEFT, padx=2)
+
         self.text_output_scrolled_text = ScrolledText(root, wrap="word")
-        self.text_output_scrolled_text.grid(row=2, column=0, columnspan=6, sticky="nsew")
+        self.text_output_scrolled_text.grid(row=3, column=0, columnspan=6, sticky="nsew")
 
         # Run the Tkinter event loop
         root.after(200, lambda: self.update_status(root))
@@ -627,6 +667,77 @@ class JpVocabUI:
             self.tk_root.after_cancel(self.font_size_changed_signal)
         self.font_size_changed_signal = self.tk_root.after(FONT_SIZE_DEBOUNCE_DURATION, self.apply_font_size)
 
+    def get_window_list(self) -> List[Tuple[str, int]]:
+        """Get list of all visible windows with their handles."""
+
+        def callback(hwnd, windows):
+            if win32gui.IsWindowVisible(hwnd):
+                title = win32gui.GetWindowText(hwnd)
+                if title:  # Only add windows with titles
+                    windows.append((title, hwnd))
+            return True
+
+        windows = []
+        win32gui.EnumWindows(callback, windows)
+        return sorted(windows, key=lambda x: x[0].lower())  # Sort alphabetically
+
+    def auto_advance(self) -> None:
+        """Send Enter key to the selected window."""
+        while not self.ui_update_queue.empty():
+            print("Waiting for update queue to drain.")
+            time.sleep(.5)
+
+        if not self.auto_advance_enabled.get():
+            print("auto_advance turned off.")
+            return
+
+        if not hasattr(self, 'target_window_var'):
+            print("No target window var")
+            return
+
+        selected = self.target_window_var.get()
+        if not selected:
+            print("No target window var selected")
+            return
+
+        # Find the window handle from the selected title
+        target_hwnd = None
+        for title, hwnd in self.window_list:
+            if title == selected:
+                target_hwnd = hwnd
+                break
+
+        if not target_hwnd:
+            return
+
+        # Get window position and size
+        left, top, right, bottom = win32gui.GetWindowRect(target_hwnd)
+        width = right - left
+        height = bottom - top
+
+        # Calculate center of window
+        center_x = width // 2
+        center_y = height // 2
+
+        # Create the click message
+        lparam = center_y << 16 | center_x  # Combine x,y coordinates into LPARAM
+
+        # Send virtual mouse click messages
+        win32gui.PostMessage(target_hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam)
+        time.sleep(0.1)
+        win32gui.PostMessage(target_hwnd, win32con.WM_LBUTTONUP, 0, lparam)
+
+        print("Auto-Advance DONE")
+
+    def refresh_window_list(self) -> None:
+        """Refresh the list of windows in the dropdown."""
+        self.window_list = self.get_window_list()
+        menu = self.target_window_dropdown['menu']
+        menu.delete(0, 'end')
+        for title, _ in self.window_list:
+            menu.add_command(label=title,
+                             command=lambda t=title: self.target_window_var.set(t))
+
     # threading etc
 
     def start(self):
@@ -687,6 +798,8 @@ class JpVocabUI:
                                  update_queue=self.ui_update_queue, api_override=command.api_override)
                 if command.command_type == "tts":
                     generate_tts(command.sentence)
+                if command.command_type == "auto_advance":
+                    self.auto_advance()
             except Empty:
                 pass
             except Exception as e:
@@ -776,6 +889,14 @@ class JpVocabUI:
                 if is_editing_textfield:
                     logging.info("Skipping textfield edit.")
 
+            if self.auto_advance_enabled.get():
+                print("AUTO-ADVANCE triggered")
+                with self.sentence_lock:
+                    self.command_queue.put(MonitorCommand(
+                        "auto_advance",
+                        self.locked_sentence,
+                        [],
+                    ))
         self.previous_clipboard = current_clipboard
 
     def consume_update(self):
