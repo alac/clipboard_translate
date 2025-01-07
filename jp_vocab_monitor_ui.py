@@ -16,6 +16,7 @@ from typing import List, Tuple
 import win32gui
 import win32con
 import time
+import win32api
 
 
 from ai_prompts import (should_generate_vocabulary_list, UIUpdateCommand, run_vocabulary_list,
@@ -720,18 +721,42 @@ class JpVocabUI:
         width = right - left
         height = bottom - top
 
-        # Calculate center of window
-        center_x = width // 2
-        center_y = height // 2
+        click_mechanism = "CLICK"
+        if click_mechanism == "POST":
+            # Calculate center of window
+            center_x = width // 2
+            center_y = height // 2
 
-        # Create the click message
-        lparam = center_y << 16 | center_x  # Combine x,y coordinates into LPARAM
+            # Create the click message
+            lparam = center_y << 16 | center_x  # Combine x,y coordinates into LPARAM
 
-        # Send virtual mouse click messages
-        win32gui.PostMessage(target_hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam)
-        time.sleep(0.1)
-        win32gui.PostMessage(target_hwnd, win32con.WM_LBUTTONUP, 0, lparam)
+            # Send virtual mouse click messages
+            win32gui.PostMessage(target_hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam)
+            time.sleep(0.1)
+            win32gui.PostMessage(target_hwnd, win32con.WM_LBUTTONUP, 0, lparam)
+        elif click_mechanism == "CLICK":
+            # Calculate center of window
+            center_x = left + (width // 2)
+            center_y = top + (height // 2)
 
+            # Store current mouse position
+            current_x, current_y = win32api.GetCursorPos()
+
+            # Bring window to foreground
+            win32gui.SetForegroundWindow(target_hwnd)
+            time.sleep(0.1)  # Give the window a moment to come to foreground
+
+            # Move mouse to center of window, click, and return to original position
+            win32api.SetCursorPos((center_x, center_y))
+            time.sleep(0.1)
+
+            # Simulate left mouse button click
+            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+            time.sleep(0.1)
+            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+
+            # Return mouse to original position
+            win32api.SetCursorPos((current_x, current_y))
         print("Auto-Advance DONE")
 
     def refresh_window_list(self) -> None:
