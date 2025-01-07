@@ -8,3 +8,4 @@ sseclient-py
 tomli~=2.0.1
 unidic
 jamdict
+pywin32
