@@ -1,12 +1,15 @@
+from datetime import datetime
 from pathlib import Path
 from queue import SimpleQueue
 from string import Template
-from typing import Optional
+from typing import Optional, Iterator
 from threading import Lock
 import os
 import datetime
-import time
 import logging
+import threading
+import time
+import sys
 
 from library.ai_requests import run_ai_request_stream
 from library.get_dictionary_defs import correct_vocab_readings, parse_vocab_readings
@@ -35,6 +38,79 @@ REQUEST_INTERRUPT_FLAG = False
 REQUEST_INTERRUPT_LOCK = Lock()
 
 
+class StreamingStats:
+    def __init__(self):
+        self.start_time = datetime.datetime.now()
+        self.token_count = 0
+        self.running = True
+        self.lock = threading.Lock()
+
+    def add_token(self, _token):
+        with self.lock:
+            self.token_count += 1
+
+    def get_stats(self):
+        elapsed = (datetime.datetime.now() - self.start_time).total_seconds()
+        tokens_per_sec = self.token_count / elapsed if elapsed > 0 else 0
+        return elapsed, self.token_count, tokens_per_sec
+
+    def stop(self):
+        self.running = False
+
+
+def stats_printer(stats: StreamingStats):
+    while stats.running:
+        elapsed, tokens, rate = stats.get_stats()
+        sys.stdout.write('\r' + ' ' * 80 + '\r')
+        sys.stdout.write(f"Streaming: {elapsed:.1f}s, {tokens} tokens ({rate:.1f} tokens/sec)")
+        sys.stdout.flush()
+        time.sleep(0.1)
+
+
+def stream_with_stats(
+        stream_iterator: Iterator[str],
+        sentence: str,
+        update_queue: SimpleQueue[UIUpdateCommand],
+        update_type: str
+) -> Optional[str]:
+    stats = StreamingStats()
+    printer_thread = threading.Thread(target=stats_printer, args=(stats,))
+    printer_thread.start()
+
+    try:
+        print(f"{ANSIColors.GREEN}-ResponseStarting-\n{ANSIColors.END}", end="")
+
+        last_tokens = []
+        result = []
+
+        for tok in stream_iterator:
+            if request_interrupt_atomic_swap(False):
+                print(f"{ANSIColors.GREEN}-interrupted-\n{ANSIColors.END}", end="")
+                return None
+
+            if update_queue is not None:
+                update_queue.put(UIUpdateCommand(update_type, sentence, tok))
+
+            stats.add_token(tok)
+            result.append(tok)
+
+            # Handle models getting stuck in a loop
+            last_tokens.append(tok)
+            last_tokens = last_tokens[-10:]
+            if len(last_tokens) == 10 and len(set(last_tokens)) <= 3:
+                logging.warning(f"AI generated exited because of looping response: {last_tokens}")
+                return None
+
+        print(f"{ANSIColors.GREEN}-ResponseCompleted-\n{ANSIColors.END}", end="")
+        return ''.join(result)
+
+    finally:
+        stats.stop()
+        printer_thread.join()
+        sys.stdout.write('\r' + ' ' * 80 + '\r')
+        sys.stdout.flush()
+
+
 def request_interrupt_atomic_swap(new_value: bool) -> bool:
     global REQUEST_INTERRUPT_FLAG
     with REQUEST_INTERRUPT_LOCK:
@@ -61,30 +137,14 @@ def run_vocabulary_list(sentence: str, temp: Optional[float] = None,
         logging.error(f"Error loading prompt template: {e}")
         return
 
-    print(ANSIColors.GREEN, end="")
-    print("-ResponseStarting-\n")
-    print(ANSIColors.END, end="")
-
-    last_tokens = []
-    for tok in run_ai_request_stream(prompt, ["</task>", "</example>"], print_prompt=False,
-                                     temperature=temp, ban_eos_token=False, max_response=500,
-                                     api_override=api_override):
-        if request_interrupt_atomic_swap(False):
-            print(ANSIColors.GREEN, end="")
-            print("-interrupted-\n")
-            print(ANSIColors.END, end="")
-            return
-        if update_queue is not None:
-            update_queue.put(UIUpdateCommand("define", sentence, tok))
-        last_tokens.append(tok)
-        last_tokens = last_tokens[-10:]
-        if len(last_tokens) == 10 and len(set(last_tokens)) <= 3:
-            logging.warning(f"AI generated exited because of looping response: {last_tokens}")
-            return
-
-    print(ANSIColors.GREEN, end="")
-    print("-ResponseCompleted-\n")
-    print(ANSIColors.END, end="")
+    token_stream = run_ai_request_stream(prompt,
+                                         ["</task>", "</example>"],
+                                         print_prompt=False,
+                                         temperature=temp,
+                                         ban_eos_token=False,
+                                         max_response=500,
+                                         api_override=api_override)
+    stream_with_stats(token_stream, sentence, update_queue, "define")
 
 
 def should_generate_vocabulary_list(sentence):
@@ -126,36 +186,20 @@ def translate_with_context(history, sentence, temp=None, style="",
         logging.error(f"Error loading prompt template: {e}")
         return
 
-    print(ANSIColors.GREEN, end="")
-    print("-ResponseStarting-\n")
-    print(ANSIColors.END, end="")
-
-    last_tokens = []
     if update_queue is not None:
         if index == 0:
             update_queue.put(UIUpdateCommand("translate", sentence, "- "))
         else:
             update_queue.put(UIUpdateCommand("translate", sentence, f"#{index}. "))
-    for tok in run_ai_request_stream(prompt,
-                                     ["</english>", "</task>", "</example>"],
-                                     print_prompt=False, temperature=temp, ban_eos_token=False, max_response=100,
-                                     api_override=api_override):
-        if request_interrupt_atomic_swap(False):
-            print(ANSIColors.GREEN, end="")
-            print("-interrupted-\n")
-            print(ANSIColors.END, end="")
-            return
-        if update_queue is not None:
-            update_queue.put(UIUpdateCommand("translate", sentence, tok))
-        # explicit exit for models getting stuck on a token (e.g. "............")
-        last_tokens.append(tok)
-        last_tokens = last_tokens[-10:]
-        if len(last_tokens) == 10 and len(set(last_tokens)) <= 3:
-            logging.warning(f"AI generated exited because of looping response: {last_tokens}")
-            return
-    print(ANSIColors.GREEN, end="")
-    print("-ResponseCompleted-\n")
-    print(ANSIColors.END, end="")
+
+    token_stream = run_ai_request_stream(prompt,
+                                         ["</english>", "</task>", "</example>"],
+                                         print_prompt=False,
+                                         temperature=temp,
+                                         ban_eos_token=False,
+                                         max_response=100,
+                                         api_override=api_override)
+    stream_with_stats(token_stream, sentence, update_queue, "translate")
 
 
 def translate_with_context_cot(history, sentence, temp=None,
@@ -203,34 +247,17 @@ def translate_with_context_cot(history, sentence, temp=None,
         logging.error(f"Error loading prompt template: {e}")
         return
 
-    print(ANSIColors.GREEN, end="")
-    print("-ResponseStarting-\n")
-    print(ANSIColors.END, end="")
+    token_stream = run_ai_request_stream(prompt,
+                                         ["</task>", "</example>"],
+                                         print_prompt=False,
+                                         temperature=temp,
+                                         ban_eos_token=False,
+                                         max_response=1000,
+                                         api_override=api_override)
+    result = stream_with_stats(token_stream, sentence, update_queue, update_token_key)
 
-    result = ""
-    last_tokens = []
-    for tok in run_ai_request_stream(prompt,
-                                     ["</task>", "</example>"],
-                                     print_prompt=False, temperature=temp, ban_eos_token=False, max_response=1000,
-                                     api_override=api_override):
-        if request_interrupt_atomic_swap(False):
-            print(ANSIColors.GREEN, end="")
-            print("-interrupted-\n")
-            print(ANSIColors.END, end="")
-            return
-        if update_queue is not None:
-            update_queue.put(UIUpdateCommand(update_token_key, sentence, tok))
-        result += tok
-        # explicit exit for models getting stuck on a token (e.g. "............")
-        last_tokens.append(tok)
-        last_tokens = last_tokens[-10:]
-        if len(last_tokens) == 10 and len(set(last_tokens)) <= 3:
-            logging.warning(f"AI generated exited because of looping response: {last_tokens}")
-            return
-
-    print(ANSIColors.GREEN, end="")
-    print("-ResponseCompleted-\n")
-    print(ANSIColors.END, end="")
+    if not result:
+        return
 
     if len(sentence) > 30 and settings.get_setting_fallback('translate_cot.save_cot_outputs', fallback=False):
         input_and_output = prompt.replace(examples, "") + "\n" + result
@@ -277,31 +304,14 @@ def ask_question(question: str, sentence: str, history: list[str], temp: Optiona
         logging.error(f"Error loading prompt template: {e}")
         return
 
-    print(ANSIColors.GREEN, end="")
-    print("-ResponseStarting-\n")
-    print(ANSIColors.END, end="")
-
-    last_tokens = []
-    for tok in run_ai_request_stream(prompt, ["</answer>", "</task>", "</example>"], print_prompt=False,
-                                     temperature=temp, ban_eos_token=False, max_response=1000,
-                                     api_override=api_override):
-        if request_interrupt_atomic_swap(False):
-            print(ANSIColors.GREEN, end="")
-            print("-interrupted-\n")
-            print(ANSIColors.END, end="")
-            return
-        if update_queue is not None:
-            update_queue.put(UIUpdateCommand(update_token_key, sentence, tok))
-        # explicit exit for models getting stuck on a token (e.g. "............")
-        last_tokens.append(tok)
-        last_tokens = last_tokens[-10:]
-        if len(last_tokens) == 10 and len(set(last_tokens)) <= 3:
-            logging.warning(f"AI generated exited because of looping response: {last_tokens}")
-            return
-
-    print(ANSIColors.GREEN, end="")
-    print("-ResponseCompleted-\n")
-    print(ANSIColors.END, end="")
+    token_stream = run_ai_request_stream(prompt,
+                                         ["</answer>", "</task>", "</example>"],
+                                         print_prompt=False,
+                                         temperature=temp,
+                                         ban_eos_token=False,
+                                         max_response=1000,
+                                         api_override=api_override)
+    stream_with_stats(token_stream, sentence, update_queue, update_token_key)
 
 
 def read_file_or_throw(filepath: str) -> str:
