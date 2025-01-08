@@ -368,7 +368,7 @@ class JpVocabUI:
         self.auto_advance_mechanism = tk.StringVar()
         self.auto_advance_mechanism.set(AutoAdvanceMechanism.PostMessageClick)
         auto_advance_style_dropdown = tk.OptionMenu(
-            right_controls,
+            third_menu_bar,
             self.auto_advance_mechanism,
             AutoAdvanceMechanism.PostMessageClick,
             AutoAdvanceMechanism.MouseClick,
@@ -746,42 +746,61 @@ class JpVocabUI:
         width = right - left
         height = bottom - top
 
-        if self.auto_advance_mechanism.get() == AutoAdvanceMechanism.PostMessageClick:
-            # Calculate center of window
-            center_x = width // 2
-            center_y = height // 2
+        def advance_window():
+            if self.auto_advance_mechanism.get() == AutoAdvanceMechanism.PostMessageClick:
+                # Calculate center of window
+                center_x = width // 2
+                center_y = height // 2
 
-            # Create the click message
-            lparam = center_y << 16 | center_x  # Combine x,y coordinates into LPARAM
+                # Create the click message
+                lparam = center_y << 16 | center_x  # Combine x,y coordinates into LPARAM
 
-            # Send virtual mouse click messages
-            win32gui.PostMessage(target_hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam)
-            time.sleep(0.1)
-            win32gui.PostMessage(target_hwnd, win32con.WM_LBUTTONUP, 0, lparam)
-        elif self.auto_advance_mechanism.get() == AutoAdvanceMechanism.MouseClick:
-            # Calculate center of window
-            center_x = left + (width // 2)
-            center_y = top + (height // 2)
+                # Send virtual mouse click messages
+                win32gui.PostMessage(target_hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam)
+                time.sleep(0.1)
+                win32gui.PostMessage(target_hwnd, win32con.WM_LBUTTONUP, 0, lparam)
+            elif self.auto_advance_mechanism.get() == AutoAdvanceMechanism.MouseClick:
+                # Calculate center of window
+                center_x = left + (width // 2)
+                center_y = top + (height // 2)
 
-            # Store current mouse position
-            current_x, current_y = win32api.GetCursorPos()
+                # Store current mouse position
+                current_x, current_y = win32api.GetCursorPos()
 
-            # Bring window to foreground
-            win32gui.SetForegroundWindow(target_hwnd)
-            time.sleep(0.1)  # Give the window a moment to come to foreground
+                # Bring window to foreground
+                win32gui.SetForegroundWindow(target_hwnd)
+                time.sleep(0.1)  # Give the window a moment to come to foreground
 
-            # Move mouse to center of window, click, and return to original position
-            win32api.SetCursorPos((center_x, center_y))
-            time.sleep(0.1)
+                # Move mouse to center of window, click, and return to original position
+                win32api.SetCursorPos((center_x, center_y))
+                time.sleep(0.1)
 
-            # Simulate left mouse button click
-            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
-            time.sleep(0.1)
-            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+                # Simulate left mouse button click
+                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+                time.sleep(0.1)
+                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
 
-            # Return mouse to original position
-            win32api.SetCursorPos((current_x, current_y))
-        print("Auto-Advance DONE")
+                # Return mouse to original position
+                win32api.SetCursorPos((current_x, current_y))
+
+        original_sentence = self.ui_sentence
+        for i in [5, 5, 5, 10, 30]:
+            advance_window()
+
+            def wait_loop(wait_time):
+                while wait_time > 0:
+                    if original_sentence != self.ui_sentence:
+                        print(f"{ANSIColors.GREEN}Auto-Advance SUCCESS{ANSIColors.END}")
+                        return True
+                    print(f"\r{ANSIColors.RED}Auto-Advance waiting {wait_time} seconds... {ANSIColors.END}", end='', flush=True)
+                    time.sleep(1)
+                    wait_time -= 1
+                return False
+
+            if wait_loop(i):
+                break
+        if original_sentence == self.ui_sentence:
+            print(f"{ANSIColors.RED}Auto-Advance FAILED{ANSIColors.END}")
 
     def refresh_window_list(self) -> None:
         """Refresh the list of windows in the dropdown."""
@@ -953,7 +972,6 @@ class JpVocabUI:
                     logging.info("Skipping textfield edit.")
 
             if self.auto_advance_enabled.get():
-                print("AUTO-ADVANCE triggered")
                 with self.sentence_lock:
                     self.command_queue.put(MonitorCommand(
                         "auto_advance",
