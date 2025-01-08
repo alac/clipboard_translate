@@ -54,6 +54,11 @@ class TranslationType(str, Enum):
     DefineAndChainOfThought = 'Define->Analysis'
 
 
+class AutoAdvanceMechanism(str, Enum):
+    PostMessageClick = 'VirtualClick'
+    MouseClick = 'MouseClick'
+
+
 class InvalidTranslationTypeException(Exception):
     pass
 
@@ -122,6 +127,13 @@ class JpVocabUI:
         self.translation_style = None  # type: Optional[tk.StringVar]
         self.font_size = None  # type: Optional[tk.StringVar]
         self.font_size_changed_signal = None
+        self.auto_advance_enabled = None  # type: Optional[tk.BooleanVar]
+        self.auto_advance_mechanism = None  # type: Optional[tk.StringVar]
+
+        # auto-advance
+        self.target_window_var = None  # type: Optional[tk.StringVar]
+        self.window_list = []  # type: List[Tuple[str, int]]
+        self.target_window_dropdown = None  # type: Optional[tk.OptionMenu]
 
         # monitor data
         self.history = []
@@ -350,6 +362,18 @@ class JpVocabUI:
         )
         self.create_tooltip(refresh_button, "Refresh Window List")
         refresh_button.pack(side=tk.LEFT, padx=2)
+
+        auto_advance_style_label = tk.Label(third_menu_bar, text="AutoAdvanceMechanism:")
+        auto_advance_style_label.pack(side=tk.LEFT, padx=2)
+        self.auto_advance_mechanism = tk.StringVar()
+        self.auto_advance_mechanism.set(AutoAdvanceMechanism.PostMessageClick)
+        auto_advance_style_dropdown = tk.OptionMenu(
+            right_controls,
+            self.auto_advance_mechanism,
+            AutoAdvanceMechanism.PostMessageClick,
+            AutoAdvanceMechanism.MouseClick,
+        )
+        auto_advance_style_dropdown.pack(side=tk.LEFT, padx=2)
 
         self.text_output_scrolled_text = ScrolledText(root, wrap="word")
         self.text_output_scrolled_text.grid(row=3, column=0, columnspan=6, sticky="nsew")
@@ -673,14 +697,15 @@ class JpVocabUI:
             self.tk_root.after_cancel(self.font_size_changed_signal)
         self.font_size_changed_signal = self.tk_root.after(FONT_SIZE_DEBOUNCE_DURATION, self.apply_font_size)
 
-    def get_window_list(self) -> List[Tuple[str, int]]:
+    @staticmethod
+    def get_window_list() -> List[Tuple[str, int]]:
         """Get list of all visible windows with their handles."""
 
-        def callback(hwnd, windows):
+        def callback(hwnd, window_list):
             if win32gui.IsWindowVisible(hwnd):
                 title = win32gui.GetWindowText(hwnd)
                 if title:  # Only add windows with titles
-                    windows.append((title, hwnd))
+                    window_list.append((title, hwnd))
             return True
 
         windows = []
@@ -721,8 +746,7 @@ class JpVocabUI:
         width = right - left
         height = bottom - top
 
-        click_mechanism = "CLICK"
-        if click_mechanism == "POST":
+        if self.auto_advance_mechanism.get() == AutoAdvanceMechanism.PostMessageClick:
             # Calculate center of window
             center_x = width // 2
             center_y = height // 2
@@ -734,7 +758,7 @@ class JpVocabUI:
             win32gui.PostMessage(target_hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam)
             time.sleep(0.1)
             win32gui.PostMessage(target_hwnd, win32con.WM_LBUTTONUP, 0, lparam)
-        elif click_mechanism == "CLICK":
+        elif self.auto_advance_mechanism.get() == AutoAdvanceMechanism.MouseClick:
             # Calculate center of window
             center_x = left + (width // 2)
             center_y = top + (height // 2)
