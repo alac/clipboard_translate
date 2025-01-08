@@ -64,7 +64,7 @@ def stats_printer(stats: StreamingStats):
         sys.stdout.write('\r' + ' ' * 80 + '\r')
         sys.stdout.write(f"Streaming: {elapsed:.1f}s, {tokens} tokens ({rate:.1f} tokens/sec)")
         sys.stdout.flush()
-        time.sleep(0.1)
+        time.sleep(0.5)
 
 
 def stream_with_stats(

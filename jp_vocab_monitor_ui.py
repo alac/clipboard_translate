@@ -166,16 +166,14 @@ class JpVocabUI:
         root = tk.Tk()
         self.tk_root = root
 
+        show_auto_advance_row = settings.get_setting_fallback('general.show_auto_advance', False)
+        total_rows = 4 if show_auto_advance_row else 3
+
         root.geometry("{}x{}+0+0".format(655, 500))
-        root.grid_rowconfigure(3, weight=1)
+        root.grid_rowconfigure(total_rows - 1, weight=1)
         root.grid_columnconfigure(0, weight=1)
 
-        self.ai_service = tk.StringVar()
-        self.ai_service.set(settings.get_setting('ai_settings.api'))  # default value
-        self.ai_service.trace('w', self.on_ai_service_change)
-
-        self.translation_style = tk.StringVar()
-        self.translation_style.set(TranslationType.Off)  # default value
+        current_row = 0
 
         # Button definitions with emojis and tooltips
         buttons_config = [
@@ -206,9 +204,9 @@ class JpVocabUI:
             },
         ]
 
-        # Create menu bar frame
+        # Menu bar for prev/next/stop... + AI action/service
         menu_bar = tk.Frame(root)
-        menu_bar.grid(row=0, column=0, columnspan=2, sticky="ew")
+        menu_bar.grid(row=current_row, column=0, columnspan=2, sticky="ew")
         menu_bar.grid_columnconfigure(1, weight=1)
 
         # Left buttons
@@ -229,7 +227,9 @@ class JpVocabUI:
         right_controls = tk.Frame(menu_bar)
         right_controls.grid(row=0, column=1, sticky="e")
 
-        # AI Service selector
+        # AI action selector
+        self.translation_style = tk.StringVar()
+        self.translation_style.set(TranslationType.Off)  # default value
         translate_label = tk.Label(right_controls, text="Auto-action:")
         translate_label.pack(side=tk.LEFT, padx=2)
         translate_dropdown = tk.OptionMenu(
@@ -247,6 +247,9 @@ class JpVocabUI:
         translate_dropdown.pack(side=tk.LEFT, padx=2)
 
         # AI Service selector
+        self.ai_service = tk.StringVar()
+        self.ai_service.set(settings.get_setting('ai_settings.api'))  # default value
+        self.ai_service.trace('w', self.on_ai_service_change)
         ai_label = tk.Label(right_controls, text="Service:")
         ai_label.pack(side=tk.LEFT, padx=2)
         ai_dropdown = tk.OptionMenu(
@@ -267,6 +270,7 @@ class JpVocabUI:
         )
         self.create_tooltip(history_button, "Translation History")
         history_button.pack(side=tk.LEFT, padx=2)
+        current_row += 1
 
         # Button definitions with emojis and tooltips
         row2_buttons_config = [
@@ -297,9 +301,9 @@ class JpVocabUI:
             },
         ]
 
-        # Create menu bar frame
+        # Menu bar for translate/analyze... Font Size
         second_menu_bar = tk.Frame(root)
-        second_menu_bar.grid(row=1, column=0, columnspan=6, sticky="ew")
+        second_menu_bar.grid(row=current_row, column=0, columnspan=6, sticky="ew")
         second_menu_bar.grid_columnconfigure(1, weight=1)
 
         for btn_config in row2_buttons_config:
@@ -325,58 +329,57 @@ class JpVocabUI:
             textvariable=self.font_size,
         )
         font_spinbox.pack(side=tk.LEFT, padx=2)
+        current_row += 1
 
-        # Create third menu bar frame for auto-advance controls
-        third_menu_bar = tk.Frame(root)
-        third_menu_bar.grid(row=2, column=0, columnspan=6, sticky="ew")
-        third_menu_bar.grid_columnconfigure(1, weight=1)
+        if show_auto_advance_row:
+            third_menu_bar = tk.Frame(root)
+            third_menu_bar.grid(row=2, column=0, columnspan=6, sticky="ew")
+            third_menu_bar.grid_columnconfigure(1, weight=1)
 
-        # Auto-advance checkbox
-        self.auto_advance_enabled = tk.BooleanVar(value=False)
-        auto_advance_checkbox = tk.Checkbutton(
-            third_menu_bar,
-            text="Enable Auto-advance",
-            variable=self.auto_advance_enabled
-        )
-        auto_advance_checkbox.pack(side=tk.LEFT, padx=2)
+            self.auto_advance_enabled = tk.BooleanVar(value=False)
+            auto_advance_checkbox = tk.Checkbutton(
+                third_menu_bar,
+                text="Enable Auto-advance",
+                variable=self.auto_advance_enabled
+            )
+            auto_advance_checkbox.pack(side=tk.LEFT, padx=2)
 
-        # Target window dropdown
-        target_label = tk.Label(third_menu_bar, text="Target Window:")
-        target_label.pack(side=tk.LEFT, padx=2)
+            target_label = tk.Label(third_menu_bar, text="Target Window:")
+            target_label.pack(side=tk.LEFT, padx=2)
 
-        self.target_window_var = tk.StringVar()
-        self.window_list = self.get_window_list()
-        self.target_window_dropdown = tk.OptionMenu(
-            third_menu_bar,
-            self.target_window_var,
-            *[title for title, _ in self.window_list]
-        )
-        self.target_window_dropdown.pack(side=tk.LEFT, padx=2)
+            self.target_window_var = tk.StringVar()
+            self.window_list = self.get_window_list()
+            self.target_window_dropdown = tk.OptionMenu(
+                third_menu_bar,
+                self.target_window_var,
+                *[title for title, _ in self.window_list]
+            )
+            self.target_window_dropdown.pack(side=tk.LEFT, padx=2)
 
-        # Refresh button
-        refresh_button = tk.Button(
-            third_menu_bar,
-            text="🔄",
-            command=self.refresh_window_list,
-            font=('TkDefaultFont', 12)
-        )
-        self.create_tooltip(refresh_button, "Refresh Window List")
-        refresh_button.pack(side=tk.LEFT, padx=2)
+            refresh_button = tk.Button(
+                third_menu_bar,
+                text="🔄",
+                command=self.refresh_window_list,
+                font=('TkDefaultFont', 12)
+            )
+            self.create_tooltip(refresh_button, "Refresh Window List")
+            refresh_button.pack(side=tk.LEFT, padx=2)
 
-        auto_advance_style_label = tk.Label(third_menu_bar, text="AutoAdvanceMechanism:")
-        auto_advance_style_label.pack(side=tk.LEFT, padx=2)
-        self.auto_advance_mechanism = tk.StringVar()
-        self.auto_advance_mechanism.set(AutoAdvanceMechanism.PostMessageClick)
-        auto_advance_style_dropdown = tk.OptionMenu(
-            third_menu_bar,
-            self.auto_advance_mechanism,
-            AutoAdvanceMechanism.PostMessageClick,
-            AutoAdvanceMechanism.MouseClick,
-        )
-        auto_advance_style_dropdown.pack(side=tk.LEFT, padx=2)
+            auto_advance_style_label = tk.Label(third_menu_bar, text="AutoAdvanceMechanism:")
+            auto_advance_style_label.pack(side=tk.LEFT, padx=2)
+            self.auto_advance_mechanism = tk.StringVar()
+            self.auto_advance_mechanism.set(AutoAdvanceMechanism.PostMessageClick)
+            auto_advance_style_dropdown = tk.OptionMenu(
+                third_menu_bar,
+                self.auto_advance_mechanism,
+                AutoAdvanceMechanism.PostMessageClick,
+                AutoAdvanceMechanism.MouseClick,
+            )
+            auto_advance_style_dropdown.pack(side=tk.LEFT, padx=2)
+            current_row += 1
 
         self.text_output_scrolled_text = ScrolledText(root, wrap="word")
-        self.text_output_scrolled_text.grid(row=3, column=0, columnspan=6, sticky="nsew")
+        self.text_output_scrolled_text.grid(row=current_row, column=0, columnspan=6, sticky="nsew")
 
         # Run the Tkinter event loop
         root.after(200, lambda: self.update_status(root))
@@ -792,7 +795,9 @@ class JpVocabUI:
                     if original_sentence != self.ui_sentence:
                         print(f"{ANSIColors.GREEN}Auto-Advance SUCCESS{ANSIColors.END}")
                         return True
-                    print(f"\r{ANSIColors.RED}Auto-Advance waiting {wait_time} seconds... {ANSIColors.END}", end='', flush=True)
+                    print(f"\r{ANSIColors.RED}Auto-Advance waiting {wait_time} seconds... {ANSIColors.END}",
+                          end='',
+                          flush=True)
                     time.sleep(1)
                     wait_time -= 1
                 return False
@@ -957,7 +962,8 @@ class JpVocabUI:
                     self.locked_sentence = next_sentence
 
                 logging.info(f"New sentence: {next_sentence}")
-                self.trigger_auto_behavior()
+                if len(next_sentence) > settings.get_setting_fallback("general.min_length_for_auto_behavior", 0):
+                    self.trigger_auto_behavior()
                 self.history = self.history[-self.history_length:]
 
                 # each time we add a new sentence, we add a placeholder for it to HistoryStates
