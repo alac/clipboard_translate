@@ -59,7 +59,11 @@ def run_vocabulary_list(sentence: str, temp: Optional[float] = None,
         prompt = Template(template).safe_substitute(template_data)
     except FileNotFoundError as e:
         logging.error(f"Error loading prompt template: {e}")
-        return None
+        return
+
+    print(ANSIColors.GREEN, end="")
+    print("-ResponseStarting-\n")
+    print(ANSIColors.END, end="")
 
     last_tokens = []
     for tok in run_ai_request_stream(prompt, ["</task>", "</example>"], print_prompt=False,
@@ -69,14 +73,18 @@ def run_vocabulary_list(sentence: str, temp: Optional[float] = None,
             print(ANSIColors.GREEN, end="")
             print("-interrupted-\n")
             print(ANSIColors.END, end="")
-            break
+            return
         if update_queue is not None:
             update_queue.put(UIUpdateCommand("define", sentence, tok))
         last_tokens.append(tok)
         last_tokens = last_tokens[-10:]
         if len(last_tokens) == 10 and len(set(last_tokens)) <= 3:
             logging.warning(f"AI generated exited because of looping response: {last_tokens}")
-            break
+            return
+
+    print(ANSIColors.GREEN, end="")
+    print("-ResponseCompleted-\n")
+    print(ANSIColors.END, end="")
 
 
 def should_generate_vocabulary_list(sentence):
@@ -116,7 +124,11 @@ def translate_with_context(history, sentence, temp=None, style="",
         prompt = Template(template).safe_substitute(template_data)
     except FileNotFoundError as e:
         logging.error(f"Error loading prompt template: {e}")
-        return None
+        return
+
+    print(ANSIColors.GREEN, end="")
+    print("-ResponseStarting-\n")
+    print(ANSIColors.END, end="")
 
     last_tokens = []
     if update_queue is not None:
@@ -132,7 +144,7 @@ def translate_with_context(history, sentence, temp=None, style="",
             print(ANSIColors.GREEN, end="")
             print("-interrupted-\n")
             print(ANSIColors.END, end="")
-            break
+            return
         if update_queue is not None:
             update_queue.put(UIUpdateCommand("translate", sentence, tok))
         # explicit exit for models getting stuck on a token (e.g. "............")
@@ -140,7 +152,10 @@ def translate_with_context(history, sentence, temp=None, style="",
         last_tokens = last_tokens[-10:]
         if len(last_tokens) == 10 and len(set(last_tokens)) <= 3:
             logging.warning(f"AI generated exited because of looping response: {last_tokens}")
-            break
+            return
+    print(ANSIColors.GREEN, end="")
+    print("-ResponseCompleted-\n")
+    print(ANSIColors.END, end="")
 
 
 def translate_with_context_cot(history, sentence, temp=None,
@@ -186,10 +201,13 @@ def translate_with_context_cot(history, sentence, temp=None,
         prompt = Template(template).safe_substitute(template_data)
     except FileNotFoundError as e:
         logging.error(f"Error loading prompt template: {e}")
-        return None
+        return
+
+    print(ANSIColors.GREEN, end="")
+    print("-ResponseStarting-\n")
+    print(ANSIColors.END, end="")
 
     result = ""
-
     last_tokens = []
     for tok in run_ai_request_stream(prompt,
                                      ["</task>", "</example>"],
@@ -199,7 +217,7 @@ def translate_with_context_cot(history, sentence, temp=None,
             print(ANSIColors.GREEN, end="")
             print("-interrupted-\n")
             print(ANSIColors.END, end="")
-            break
+            return
         if update_queue is not None:
             update_queue.put(UIUpdateCommand(update_token_key, sentence, tok))
         result += tok
@@ -208,7 +226,11 @@ def translate_with_context_cot(history, sentence, temp=None,
         last_tokens = last_tokens[-10:]
         if len(last_tokens) == 10 and len(set(last_tokens)) <= 3:
             logging.warning(f"AI generated exited because of looping response: {last_tokens}")
-            break
+            return
+
+    print(ANSIColors.GREEN, end="")
+    print("-ResponseCompleted-\n")
+    print(ANSIColors.END, end="")
 
     if len(sentence) > 30 and settings.get_setting_fallback('translate_cot.save_cot_outputs', fallback=False):
         input_and_output = prompt.replace(examples, "") + "\n" + result
@@ -253,7 +275,11 @@ def ask_question(question: str, sentence: str, history: list[str], temp: Optiona
         prompt = Template(template).safe_substitute(template_data)
     except FileNotFoundError as e:
         logging.error(f"Error loading prompt template: {e}")
-        return None
+        return
+
+    print(ANSIColors.GREEN, end="")
+    print("-ResponseStarting-\n")
+    print(ANSIColors.END, end="")
 
     last_tokens = []
     for tok in run_ai_request_stream(prompt, ["</answer>", "</task>", "</example>"], print_prompt=False,
@@ -263,7 +289,7 @@ def ask_question(question: str, sentence: str, history: list[str], temp: Optiona
             print(ANSIColors.GREEN, end="")
             print("-interrupted-\n")
             print(ANSIColors.END, end="")
-            break
+            return
         if update_queue is not None:
             update_queue.put(UIUpdateCommand(update_token_key, sentence, tok))
         # explicit exit for models getting stuck on a token (e.g. "............")
@@ -271,7 +297,11 @@ def ask_question(question: str, sentence: str, history: list[str], temp: Optiona
         last_tokens = last_tokens[-10:]
         if len(last_tokens) == 10 and len(set(last_tokens)) <= 3:
             logging.warning(f"AI generated exited because of looping response: {last_tokens}")
-            break
+            return
+
+    print(ANSIColors.GREEN, end="")
+    print("-ResponseCompleted-\n")
+    print(ANSIColors.END, end="")
 
 
 def read_file_or_throw(filepath: str) -> str:
