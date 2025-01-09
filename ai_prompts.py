@@ -151,7 +151,7 @@ def should_generate_vocabulary_list(sentence):
     if "\n" in sentence:
         logging.info(f"Skipping sentence because of newline: {sentence}")
         return False
-    jp_grammar_parts = ["・", '【', "】", "。", "」", "「", "は" "に", "が", "な", "？", "か", "―", "…", "！", "』", "『"]
+    jp_grammar_parts = ["・", '【', "】", "。", "」", "「", "は" "に", "が", "な", "？", "か", "―", "…", "！", "』", "『", "》", "《"]
     jp_grammar_parts = jp_grammar_parts + "せぞぼたぱび".split()
     if [p for p in jp_grammar_parts if p in sentence]:
         return True
