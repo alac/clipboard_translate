@@ -147,15 +147,20 @@ def correct_vocab_readings(entries: list[VocabEntry]) -> list[VocabEntry]:
 
     for entry in entries:
         try:
-            candidates = [entry.base_form]
+            candidates = [entry]
             if entry.base_form.endswith("する"):
-                candidates.append(entry.base_form[:-2])
+                candidates.append(VocabEntry(
+                    base_form=entry.base_form[:-2],
+                    readings=entry.readings,
+                    meanings=entry.meanings,
+                ))
             for candidate in candidates:
-                result = jam.lookup(candidate)
+                result = jam.lookup(candidate.base_form)
                 if result.entries:
                     new_readings = [str(kana) for kana in result.entries[0].kana_forms]
                     if new_readings:
-                        entry.readings = new_readings
+                        candidate.readings = new_readings
+                        corrected_entries.append(candidate)
                     else:
                         logging.info(f"No readings found for: {entry.base_form}")
                     break
@@ -163,7 +168,6 @@ def correct_vocab_readings(entries: list[VocabEntry]) -> list[VocabEntry]:
                     logging.info(f"No JMDict entry found for: {entry.base_form}")
         except Exception as e:
             logging.error(f"Error looking up {entry.base_form}: {str(e)}")
-        corrected_entries.append(entry)
     return corrected_entries
 
 
