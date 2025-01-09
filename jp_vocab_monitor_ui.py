@@ -9,6 +9,7 @@ import os
 import os.path
 import pyperclip
 import re
+import sys
 import threading
 import tkinter as tk
 import logging
@@ -143,6 +144,12 @@ class JpVocabUI:
         # synchronization
         self.locked_sentence = ""
         self.sentence_lock = threading.Lock()
+
+        # uniqueness
+        self.all_seen_sentences = set([])
+        if settings.get_setting_fallback("general.include_lines_in_output_in_duplicate_set", False):
+            add_previous_lines_to_seen_lines(self.all_seen_sentences, "outputs")
+            print(f"Seen lines {len(self.all_seen_sentences)}")
 
         # history
         cache_file = os.path.join("translation_history", f"{self.source}.json")
@@ -721,10 +728,6 @@ class JpVocabUI:
             print("Waiting for update queue to drain.")
             time.sleep(.5)
 
-        if not self.auto_advance_enabled.get():
-            print("auto_advance turned off.")
-            return
-
         if not hasattr(self, 'target_window_var'):
             print("No target window var")
             return
@@ -794,6 +797,9 @@ class JpVocabUI:
                 while wait_time > 0:
                     if original_sentence != self.ui_sentence:
                         print(f"{ANSIColors.GREEN}Auto-Advance SUCCESS{ANSIColors.END}")
+                        return True
+                    if not self.auto_advance_enabled.get():
+                        print("auto_advance turned off.")
                         return True
                     print(f"\r{ANSIColors.RED}Auto-Advance waiting {wait_time} seconds... {ANSIColors.END}",
                           end='',
@@ -962,8 +968,13 @@ class JpVocabUI:
                     self.locked_sentence = next_sentence
 
                 logging.info(f"New sentence: {next_sentence}")
-                if len(next_sentence) > settings.get_setting_fallback("general.min_length_for_auto_behavior", 0):
+                is_length_okay = (len(next_sentence) >
+                                  settings.get_setting_fallback("general.min_length_for_auto_behavior", 0))
+                is_uniqueness_okay = next_sentence not in self.all_seen_sentences
+                if is_length_okay and is_uniqueness_okay:
                     self.trigger_auto_behavior()
+                if settings.get_setting_fallback("general.skip_duplicate_lines", False):
+                    self.all_seen_sentences.add(next_sentence.strip())
                 self.history = self.history[-self.history_length:]
 
                 # each time we add a new sentence, we add a placeholder for it to HistoryStates
@@ -1053,6 +1064,33 @@ def generate_tts(sentence):
             if cancellation_details.error_details:
                 logging.error("Error details: {}".format(cancellation_details.error_details))
                 logging.error("Did you set the azure_tts speech resource key and region values?")
+
+
+def add_previous_lines_to_seen_lines(seen_lines: set, output_folder: str):
+    """
+    Scans all .txt files in the output folder and its subfolders for 'Previous lines:'
+    sections and adds those lines to the seen_lines set.
+    """
+    for root, _, files in os.walk(output_folder):
+        for file in files:
+            if not file.endswith('.txt'):
+                continue
+            file_path = os.path.join(root, file)
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                if 'Previous lines:' in content:
+                    previous_section = content.split('Previous lines:')[1]
+                    if '\n\nInput:' in previous_section:
+                        previous_section = previous_section.split('\n\nInput:')[0]
+                    for line in previous_section.strip().split('\n'):
+                        if line.startswith('- '):
+                            seen_lines.add(line[2:].strip())
+                    sys.stdout.write('\r' + ' ' * 80 + '\r')
+                    sys.stdout.write(f"Loading lines from {output_folder}: {len(seen_lines)}")
+                    sys.stdout.flush()
+            except Exception as e:
+                print(f"Error processing file {file_path}: {str(e)}")
 
 
 if __name__ == '__main__':
