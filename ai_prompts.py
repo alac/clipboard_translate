@@ -73,16 +73,15 @@ def stream_with_stats(
         update_queue: SimpleQueue[UIUpdateCommand],
         update_type: str
 ) -> Optional[str]:
+    print(f"{ANSIColors.GREEN}-ResponseStarting-\n{ANSIColors.END}", end="")
+
     stats = StreamingStats()
     printer_thread = threading.Thread(target=stats_printer, args=(stats,))
     printer_thread.start()
 
+    result = []
     try:
-        print(f"{ANSIColors.GREEN}-ResponseStarting-\n{ANSIColors.END}", end="")
-
         last_tokens = []
-        result = []
-
         for tok in stream_iterator:
             if request_interrupt_atomic_swap(False):
                 print(f"{ANSIColors.GREEN}-interrupted-\n{ANSIColors.END}", end="")
@@ -100,15 +99,13 @@ def stream_with_stats(
             if len(last_tokens) == 10 and len(set(last_tokens)) <= 3:
                 logging.warning(f"AI generated exited because of looping response: {last_tokens}")
                 return None
-
-        print(f"{ANSIColors.GREEN}-ResponseCompleted-\n{ANSIColors.END}", end="")
-        return ''.join(result)
-
     finally:
         stats.stop()
         printer_thread.join()
         sys.stdout.write('\r' + ' ' * 80 + '\r')
         sys.stdout.flush()
+    print(f"\n{ANSIColors.GREEN}-ResponseCompleted-\n{ANSIColors.END}", end="")
+    return ''.join(result)
 
 
 def request_interrupt_atomic_swap(new_value: bool) -> bool:
