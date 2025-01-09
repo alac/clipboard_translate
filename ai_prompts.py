@@ -259,7 +259,9 @@ def translate_with_context_cot(history, sentence, temp=None,
     if not result:
         return
 
-    if len(sentence) > 30 and settings.get_setting_fallback('translate_cot.save_cot_outputs', fallback=False):
+    save_cot_outputs = settings.get_setting_fallback('translate_cot.save_cot_outputs', False)
+    min_length_to_save_cot_output = settings.get_setting_fallback('translate_cot.min_length_to_save_cot_output', 30)
+    if len(sentence) > min_length_to_save_cot_output and save_cot_outputs:
         input_and_output = prompt.replace(examples, "") + "\n" + result
 
         human_readable = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")

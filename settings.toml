@@ -98,6 +98,6 @@ translation_context = """>STORY_INFO_START
 Example story data. The main character is the protagonist.
 >STORY_INFO_END
 """
-rate_limit = 15
+rate_limit = 15 # this is the rate limit for gemini1.5-flash
 show_auto_advance = false
 min_length_for_auto_behavior = 0
