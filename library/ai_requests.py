@@ -1,12 +1,13 @@
-import requests
-import json
-import os
+from google.generativeai.types.generation_types import GenerationConfigDict
 from typing import Optional
-import sseclient
-import google.generativeai as google_genai
-import urllib3
 import certifi
+import google.generativeai as google_genai
+import json
 import logging
+import os
+import requests
+import sseclient
+import urllib3
 
 from library.settings_manager import settings, ROOT_FOLDER
 from library.token_count import get_token_count
@@ -191,19 +192,16 @@ def run_ai_request_gemini_pro(prompt: str, custom_stopping_strings: Optional[lis
                                               "sexually_explicit": "block_none",
                                               "dangerous": "block_none",
                                          },
-                                         generation_config={
-                                              "temperature": temperature,
-                                              "stop_sequences": custom_stopping_strings,
-                                              "max_output_tokens": max_response,
-                                         })
-
+                                         generation_config=GenerationConfigDict(
+                                              temperature=temperature,
+                                              stop_sequences=custom_stopping_strings,
+                                              max_output_tokens=max_response
+                                         ))
     system_prompt = settings.get_setting('gemini_pro_api.system_prompt')
-    contents = [
-        {"role": "user", "parts": [system_prompt]},
-        {"role": "user", "parts": [prompt]},
-    ]
-
-    response = model.generate_content(contents, stream=True)
+    # as of 01/08/2025
+    # - streaming the response triggers a "400 Invalid resource field value in the request."
+    # - multi-turn is explicitly disallowed
+    response = model.generate_content(system_prompt + "\n" + prompt)
 
     with open(os.path.join(ROOT_FOLDER, "response.txt"), "w", encoding='utf-8') as f:
         for chunk in response:
