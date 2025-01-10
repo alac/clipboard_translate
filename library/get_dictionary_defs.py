@@ -1,14 +1,15 @@
-from fugashi import Tagger
-import json
-from typing import Optional
-import re
 from dataclasses import dataclass
+from fugashi import Tagger
 from jamdict import Jamdict
-import os
-import lzma
-import shutil
 from pathlib import Path
+from typing import Optional
+import jaconv
+import json
 import logging
+import lzma
+import os
+import re
+import shutil
 
 _sentence_parser = None  # type: Optional[Tagger]
 _meaning_dict = {}   # type: dict[str, str]
@@ -157,7 +158,7 @@ def correct_vocab_readings(entries: list[VocabEntry]) -> list[VocabEntry]:
             for candidate in candidates:
                 result = jam.lookup(candidate.base_form)
                 if result.entries:
-                    new_readings = [str(kana) for kana in result.entries[0].kana_forms]
+                    new_readings = [jaconv.kana2alphabet(str(kana)) for kana in result.entries[0].kana_forms]
                     if new_readings:
                         candidate.readings = new_readings
                         corrected_entries.append(candidate)
