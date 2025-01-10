@@ -1,24 +1,24 @@
+from collections import Counter
 from enum import Enum
 from queue import SimpleQueue, Empty
 from tkinter.scrolledtext import ScrolledText
+from typing import List, Tuple
 from typing import Optional
 import argparse
 import azure.cognitiveservices.speech as speechsdk
 import json
+import logging
+import math
 import os
 import os.path
 import pyperclip
-import re
 import sys
 import threading
-import tkinter as tk
-import logging
-from typing import List, Tuple
-import win32gui
-import win32con
 import time
+import tkinter as tk
 import win32api
-
+import win32con
+import win32gui
 
 from ai_prompts import (should_generate_vocabulary_list, UIUpdateCommand, run_vocabulary_list,
                         translate_with_context, translate_with_context_cot,
@@ -1023,29 +1023,36 @@ class JpVocabUI:
             self.last_textfield_value = textfield_value
 
 
-def undo_repetition(input_string):
-    # Function to find the repetition count and return the base character
-    def process_group(match):
-        group = match.group(0)
-        count = len(group)
-        char = group[0]
+def undo_repetition(text: str) -> str:
+    if not text:
+        return text
 
-        # Special case for Japanese characters that might be repeated in pairs
-        if len(char.encode('utf-8')) > 1:
-            if count % 2 == 0:
-                return char * 2
-            else:
-                return char
+    groups: List[Tuple[str, int]] = []
+    current_char = None
+    current_count = 0
+
+    for char in text:
+        if char != current_char:
+            if current_char is not None:
+                groups.append((current_char, current_count))
+            current_char = char
+            current_count = 1
         else:
-            return char
+            current_count += 1
+    if current_char is not None:
+        groups.append((current_char, current_count))
 
-    # Use regex to find consecutive identical characters, including pairs
-    pattern = r'(.)(\1+|\1)'
+    counts = [count for _, count in groups]
+    if not counts:
+        return text
+    most_common_count = Counter(counts).most_common(1)[0][0]
 
-    # Apply the process_group function to each match
-    result = re.sub(pattern, process_group, input_string)
+    result = []
+    for char, count in groups:
+        repetitions = math.ceil(count / most_common_count)
+        result.append(char * repetitions)
 
-    return result
+    return ''.join(result)
 
 
 def generate_tts(sentence):
