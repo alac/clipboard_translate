@@ -725,6 +725,10 @@ class JpVocabUI:
 
     def auto_advance(self) -> None:
         """Send Enter key to the selected window."""
+        if not self.auto_advance_enabled.get():
+            print("auto_advance turned off.")
+            return
+
         while not self.ui_update_queue.empty():
             print("Waiting for update queue to drain.")
             time.sleep(.5)
