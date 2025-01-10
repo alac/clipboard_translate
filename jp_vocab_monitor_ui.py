@@ -161,7 +161,8 @@ class JpVocabUI:
         self.history_states_index = -1
 
         rate_limit = settings.get_setting_fallback("general.rate_limit", None)
-        if rate_limit:
+        self.rate_limiter = None  # type: Optional[RateLimiter]
+        if rate_limit and rate_limit > 0:
             self.rate_limiter = RateLimiter(requests_per_minute=rate_limit)
 
     def on_ai_service_change(self, *_args):
