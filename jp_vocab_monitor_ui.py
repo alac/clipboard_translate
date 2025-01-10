@@ -1025,7 +1025,7 @@ class JpVocabUI:
 
 
 def undo_repetition(text: str) -> str:
-    text = fix_name_repetition(text)
+    text, name_tag = fix_name_repetition(text)
 
     groups: List[Tuple[str, int]] = []
     current_char = None
@@ -1044,7 +1044,7 @@ def undo_repetition(text: str) -> str:
 
     counts = [count for _, count in groups]
     if not counts:
-        return text
+        return name_tag + text
     most_common_count = Counter(counts).most_common(1)[0][0]
 
     result = []
@@ -1052,27 +1052,27 @@ def undo_repetition(text: str) -> str:
         repetitions = math.ceil(count / most_common_count)
         result.append(char * repetitions)
 
-    return ''.join(result)
+    return name_tag + ''.join(result)
 
 
-def fix_name_repetition(text: str) -> str:
+def fix_name_repetition(text: str) -> tuple[str, str]:
     """
     Fixes repeated name tags in Japanese text. Assumes name tags are bracketed (like 【瑞流】)
     """
     if text.count('】') <= 1:
-        return text
+        return text, ""
 
     start_idx = text.find('【')
     if start_idx == -1:
-        return text
+        return text, ""
 
     end_idx = text.find('】', start_idx)
     if end_idx == -1:
-        return text
+        return text, ""
 
-    first_bracket = text[start_idx:end_idx + 1]
-    cleaned_text = text.replace(first_bracket, '')
-    return first_bracket + cleaned_text
+    name_tag = text[start_idx:end_idx + 1]
+    cleaned_text = text.replace(name_tag, '')
+    return cleaned_text, name_tag
 
 
 def generate_tts(sentence):
