@@ -135,7 +135,7 @@ def run_vocabulary_list(sentence: str, temp: Optional[float] = None,
         return
 
     token_stream = run_ai_request_stream(prompt,
-                                         ["</task>", "</example>"],
+                                         ["</task>", "</example>", "</analysis>"],
                                          print_prompt=False,
                                          temperature=temp,
                                          ban_eos_token=False,
@@ -190,7 +190,7 @@ def translate_with_context(history, sentence, temp=None, style="",
             update_queue.put(UIUpdateCommand("translate", sentence, f"#{index}. "))
 
     token_stream = run_ai_request_stream(prompt,
-                                         ["</english>", "</task>", "</example>"],
+                                         ["</english>", "</task>", "</example>", "</analysis>"],
                                          print_prompt=False,
                                          temperature=temp,
                                          ban_eos_token=False,
@@ -245,7 +245,7 @@ def translate_with_context_cot(history, sentence, temp=None,
         return
 
     token_stream = run_ai_request_stream(prompt,
-                                         ["</task>", "</example>"],
+                                         ["</task>", "</example>", "</analysis>"],
                                          print_prompt=False,
                                          temperature=temp,
                                          ban_eos_token=False,
