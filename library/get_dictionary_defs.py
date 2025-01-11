@@ -158,9 +158,11 @@ def correct_vocab_readings(entries: list[VocabEntry]) -> list[VocabEntry]:
             for candidate in candidates:
                 result = jam.lookup(candidate.base_form)
                 if result.entries:
-                    new_readings = [jaconv.kana2alphabet(str(kana)) for kana in result.entries[0].kana_forms]
-                    if new_readings:
-                        candidate.readings = new_readings
+                    all_readings = []
+                    for jam_entry in result.entries:
+                        all_readings.extend([jaconv.kana2alphabet(jaconv.kata2hira(str(kana))) for kana in jam_entry.kana_forms])
+                    if all_readings:
+                        candidate.readings = all_readings
                         corrected_entries.append(candidate)
                     else:
                         logging.info(f"No readings found for: {entry.base_form}")
@@ -241,7 +243,7 @@ if __name__ == "__main__":
         text = """
         Vocabulary:
         - カメラマン [base form] (kameraman): photographer
-        - 件 [base form] (ken): matter, case
+        - 床 [base form] (yuka): floor
         - 解決 [base form] (kaiketsu): resolution, settlement
         - させる [base form of causative] (saseru): to make/let someone do
         - 為 [base form] (tame): for the sake of
