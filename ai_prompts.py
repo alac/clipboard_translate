@@ -287,6 +287,9 @@ def translate_with_context_cot(history, sentence, temp=None,
     if not result:
         return None
 
+    if "4. Translation:" in result:
+        _, just_translated_sentence = result.split("4. Translation:")
+        print(f"{ANSIColors.CYAN}{just_translated_sentence}{ANSIColors.END}")
 
     save_cot_outputs = settings.get_setting_fallback('translate_cot.save_cot_outputs', False)
     min_length_to_save_cot_output = settings.get_setting_fallback('translate_cot.min_length_to_save_cot_output', 30)
