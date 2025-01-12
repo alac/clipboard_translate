@@ -105,3 +105,4 @@ min_length_for_auto_behavior = 0
 max_auto_advance = 0
 skip_duplicate_lines = false
 include_lines_in_output_in_duplicate_set = false
+enable_interrupt = true

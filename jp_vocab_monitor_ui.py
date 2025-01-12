@@ -22,7 +22,7 @@ import win32gui
 
 from ai_prompts import (should_generate_vocabulary_list, UIUpdateCommand, run_vocabulary_list,
                         translate_with_context, translate_with_context_cot,
-                        request_interrupt_atomic_swap, ANSIColors, ask_question)
+                        request_interrupt_atomic_swap, ANSIColors, ask_question, is_request_ongoing)
 from library.get_dictionary_defs import get_definitions_string
 from library.settings_manager import settings
 from library.ai_requests import AI_SERVICE_GEMINI, AI_SERVICE_OOBABOOGA, AI_SERVICE_OPENAI
@@ -939,7 +939,10 @@ class JpVocabUI:
                             self.history]):
                     self.history.append(current_clipboard)
                 next_sentence = current_clipboard
-                request_interrupt_atomic_swap(True)
+                interrupt_enabled = (settings.get_setting_fallback("general.enable_interrupt", True)
+                                     or not is_request_ongoing())
+                if interrupt_enabled:
+                    request_interrupt_atomic_swap(True)
 
                 if self.history_states:
                     # if the current sentence was the most recent sentence, update its history state before we move on
@@ -977,12 +980,13 @@ class JpVocabUI:
                 is_length_okay = (len(next_sentence) >
                                   settings.get_setting_fallback("general.min_length_for_auto_behavior", 0))
                 is_uniqueness_okay = next_sentence not in self.all_seen_sentences
-                if is_length_okay and is_uniqueness_okay:
+                if is_length_okay and is_uniqueness_okay and interrupt_enabled:
                     self.trigger_auto_behavior()
-                    self.max_auto_advances -= 1
-                    print(f"{ANSIColors.UNDERLINE}{self.max_auto_advances} auto advances left{ANSIColors.END}")
-                    if self.max_auto_advances <= 0:
-                        sys.exit(0)
+                    if self.auto_advance_enabled.get():
+                        self.max_auto_advances -= 1
+                        print(f"{ANSIColors.UNDERLINE}{self.max_auto_advances} auto advances left{ANSIColors.END}")
+                        if self.max_auto_advances <= 0:
+                            sys.exit(0)
                 if settings.get_setting_fallback("general.skip_duplicate_lines", False):
                     self.all_seen_sentences.add(next_sentence.strip())
                 self.history = self.history[-self.history_length:]

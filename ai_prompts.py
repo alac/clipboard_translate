@@ -35,6 +35,7 @@ class UIUpdateCommand:
 
 
 REQUEST_INTERRUPT_FLAG = False
+ONGOING_REQUEST = False
 REQUEST_INTERRUPT_LOCK = Lock()
 
 
@@ -116,6 +117,33 @@ def request_interrupt_atomic_swap(new_value: bool) -> bool:
     return old_value
 
 
+def is_request_ongoing() -> bool:
+    global ONGOING_REQUEST
+    with REQUEST_INTERRUPT_LOCK:
+        old_value = ONGOING_REQUEST
+    return old_value
+
+
+def track_running_request(func):
+    """
+    A decorator that sets the global flag ONGOING_REQUEST to True before
+    executing the decorated function and sets it back to False after execution.
+    It also ensures that only one decorated function runs at a time using a lock.
+    """
+    def wrapper(*args, **kwargs):
+        global ONGOING_REQUEST
+        with REQUEST_INTERRUPT_LOCK:
+            ONGOING_REQUEST = True
+        try:
+            result = func(*args, **kwargs)
+            return result
+        finally:
+            with REQUEST_INTERRUPT_LOCK:
+                ONGOING_REQUEST = False
+    return wrapper
+
+
+@track_running_request
 def run_vocabulary_list(sentence: str, temp: Optional[float] = None,
                         update_queue: Optional[SimpleQueue[UIUpdateCommand]] = None,
                         api_override: Optional[str] = None):
@@ -159,6 +187,7 @@ def should_generate_vocabulary_list(sentence):
     return False
 
 
+@track_running_request
 def translate_with_context(history, sentence, temp=None, style="",
                            update_queue: Optional[SimpleQueue[UIUpdateCommand]] = None, index: int = 0,
                            api_override: Optional[str] = None):
@@ -199,6 +228,7 @@ def translate_with_context(history, sentence, temp=None, style="",
     stream_with_stats(token_stream, sentence, update_queue, "translate")
 
 
+@track_running_request
 def translate_with_context_cot(history, sentence, temp=None,
                                update_queue: Optional[SimpleQueue[UIUpdateCommand]] = None,
                                api_override: Optional[str] = None, use_examples: bool = True,
@@ -270,6 +300,7 @@ def translate_with_context_cot(history, sentence, temp=None,
             f.write(input_and_output)
 
 
+@track_running_request
 def ask_question(question: str, sentence: str, history: list[str], temp: Optional[float] = None,
                  update_queue: Optional[SimpleQueue[UIUpdateCommand]] = None, update_token_key: str = "qanda",
                  api_override: Optional[str] = None):
