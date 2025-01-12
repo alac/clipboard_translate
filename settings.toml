@@ -100,9 +100,8 @@ Example story data. The main character is the protagonist.
 """
 rate_limit = 15 # this is the rate limit for gemini1.5-flash
 # Experimental. Do not touch.
-show_auto_advance = false
 min_length_for_auto_behavior = 0
-max_auto_advance = 0
+max_auto_triggers = 0
 skip_duplicate_lines = false
 include_lines_in_output_in_duplicate_set = false
 enable_interrupt = true

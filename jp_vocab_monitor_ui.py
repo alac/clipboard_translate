@@ -16,9 +16,6 @@ import sys
 import threading
 import time
 import tkinter as tk
-import win32api
-import win32con
-import win32gui
 
 from ai_prompts import (should_generate_vocabulary_list, UIUpdateCommand, run_vocabulary_list,
                         translate_with_context, translate_with_context_cot,
@@ -53,11 +50,6 @@ class TranslationType(str, Enum):
     Define = 'Define'
     DefineWithoutAI = 'Define (without AI)'
     DefineAndChainOfThought = 'Define->Analysis'
-
-
-class AutoAdvanceMechanism(str, Enum):
-    PostMessageClick = 'VirtualClick'
-    MouseClick = 'MouseClick'
 
 
 class InvalidTranslationTypeException(Exception):
@@ -128,14 +120,9 @@ class JpVocabUI:
         self.translation_style = None  # type: Optional[tk.StringVar]
         self.font_size = None  # type: Optional[tk.StringVar]
         self.font_size_changed_signal = None
-        self.auto_advance_enabled = None  # type: Optional[tk.BooleanVar]
-        self.auto_advance_mechanism = None  # type: Optional[tk.StringVar]
 
         # auto-advance
-        self.target_window_var = None  # type: Optional[tk.StringVar]
-        self.window_list = []  # type: List[Tuple[str, int]]
-        self.target_window_dropdown = None  # type: Optional[tk.OptionMenu]
-        self.max_auto_advances = settings.get_setting_fallback("general.max_auto_advance", 0)
+        self.max_auto_triggers = settings.get_setting_fallback("general.max_auto_triggers", 0)
 
         # monitor data
         self.history = []
@@ -175,8 +162,7 @@ class JpVocabUI:
         root = tk.Tk()
         self.tk_root = root
 
-        show_auto_advance_row = settings.get_setting_fallback('general.show_auto_advance', False)
-        total_rows = 4 if show_auto_advance_row else 3
+        total_rows = 3
 
         root.geometry("{}x{}+0+0".format(655, 500))
         root.grid_rowconfigure(total_rows - 1, weight=1)
@@ -339,53 +325,6 @@ class JpVocabUI:
         )
         font_spinbox.pack(side=tk.LEFT, padx=2)
         current_row += 1
-
-        if show_auto_advance_row:
-            third_menu_bar = tk.Frame(root)
-            third_menu_bar.grid(row=2, column=0, columnspan=6, sticky="ew")
-            third_menu_bar.grid_columnconfigure(1, weight=1)
-
-            self.auto_advance_enabled = tk.BooleanVar(value=False)
-            auto_advance_checkbox = tk.Checkbutton(
-                third_menu_bar,
-                text="Enable Auto-advance",
-                variable=self.auto_advance_enabled
-            )
-            auto_advance_checkbox.pack(side=tk.LEFT, padx=2)
-
-            target_label = tk.Label(third_menu_bar, text="Target Window:")
-            target_label.pack(side=tk.LEFT, padx=2)
-
-            self.target_window_var = tk.StringVar()
-            self.window_list = self.get_window_list()
-            self.target_window_dropdown = tk.OptionMenu(
-                third_menu_bar,
-                self.target_window_var,
-                *[title for title, _ in self.window_list]
-            )
-            self.target_window_dropdown.pack(side=tk.LEFT, padx=2)
-
-            refresh_button = tk.Button(
-                third_menu_bar,
-                text="🔄",
-                command=self.refresh_window_list,
-                font=('TkDefaultFont', 12)
-            )
-            self.create_tooltip(refresh_button, "Refresh Window List")
-            refresh_button.pack(side=tk.LEFT, padx=2)
-
-            auto_advance_style_label = tk.Label(third_menu_bar, text="AutoAdvanceMechanism:")
-            auto_advance_style_label.pack(side=tk.LEFT, padx=2)
-            self.auto_advance_mechanism = tk.StringVar()
-            self.auto_advance_mechanism.set(AutoAdvanceMechanism.PostMessageClick)
-            auto_advance_style_dropdown = tk.OptionMenu(
-                third_menu_bar,
-                self.auto_advance_mechanism,
-                AutoAdvanceMechanism.PostMessageClick,
-                AutoAdvanceMechanism.MouseClick,
-            )
-            auto_advance_style_dropdown.pack(side=tk.LEFT, padx=2)
-            current_row += 1
 
         self.text_output_scrolled_text = ScrolledText(root, wrap="word")
         self.text_output_scrolled_text.grid(row=current_row, column=0, columnspan=6, sticky="nsew")
@@ -709,125 +648,6 @@ class JpVocabUI:
             self.tk_root.after_cancel(self.font_size_changed_signal)
         self.font_size_changed_signal = self.tk_root.after(FONT_SIZE_DEBOUNCE_DURATION, self.apply_font_size)
 
-    @staticmethod
-    def get_window_list() -> List[Tuple[str, int]]:
-        """Get list of all visible windows with their handles."""
-
-        def callback(hwnd, window_list):
-            if win32gui.IsWindowVisible(hwnd):
-                title = win32gui.GetWindowText(hwnd)
-                if title:  # Only add windows with titles
-                    window_list.append((title, hwnd))
-            return True
-
-        windows = []
-        win32gui.EnumWindows(callback, windows)
-        return sorted(windows, key=lambda x: x[0].lower())  # Sort alphabetically
-
-    def auto_advance(self) -> None:
-        """Send Enter key to the selected window."""
-        if not self.auto_advance_enabled.get():
-            print("auto_advance turned off.")
-            return
-
-        while not self.ui_update_queue.empty():
-            print("Waiting for update queue to drain.")
-            time.sleep(.5)
-
-        if not hasattr(self, 'target_window_var'):
-            print("No target window var")
-            return
-
-        selected = self.target_window_var.get()
-        if not selected:
-            print("No target window var selected")
-            return
-
-        # Find the window handle from the selected title
-        target_hwnd = None
-        for title, hwnd in self.window_list:
-            if title == selected:
-                target_hwnd = hwnd
-                break
-
-        if not target_hwnd:
-            return
-
-        # Get window position and size
-        left, top, right, bottom = win32gui.GetWindowRect(target_hwnd)
-        width = right - left
-        height = bottom - top
-
-        def advance_window():
-            if self.auto_advance_mechanism.get() == AutoAdvanceMechanism.PostMessageClick:
-                # Calculate center of window
-                center_x = width // 2
-                center_y = height // 2
-
-                # Create the click message
-                lparam = center_y << 16 | center_x  # Combine x,y coordinates into LPARAM
-
-                # Send virtual mouse click messages
-                win32gui.PostMessage(target_hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam)
-                time.sleep(0.1)
-                win32gui.PostMessage(target_hwnd, win32con.WM_LBUTTONUP, 0, lparam)
-            elif self.auto_advance_mechanism.get() == AutoAdvanceMechanism.MouseClick:
-                # Calculate center of window
-                center_x = left + (width // 2)
-                center_y = top + (height // 2)
-
-                # Store current mouse position
-                current_x, current_y = win32api.GetCursorPos()
-
-                # Bring window to foreground
-                win32gui.SetForegroundWindow(target_hwnd)
-                time.sleep(0.1)  # Give the window a moment to come to foreground
-
-                # Move mouse to center of window, click, and return to original position
-                win32api.SetCursorPos((center_x, center_y))
-                time.sleep(0.1)
-
-                # Simulate left mouse button click
-                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
-                time.sleep(0.1)
-                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
-
-                # Return mouse to original position
-                win32api.SetCursorPos((current_x, current_y))
-
-        original_sentence = self.ui_sentence
-        for i in [5, 5, 5, 10, 30]:
-            advance_window()
-
-            def wait_loop(wait_time):
-                while wait_time > 0:
-                    if original_sentence != self.ui_sentence:
-                        print(f"{ANSIColors.GREEN}Auto-Advance SUCCESS{ANSIColors.END}")
-                        return True
-                    if not self.auto_advance_enabled.get():
-                        print("auto_advance turned off.")
-                        return True
-                    print(f"\r{ANSIColors.RED}Auto-Advance waiting {wait_time} seconds... {ANSIColors.END}",
-                          end='',
-                          flush=True)
-                    time.sleep(1)
-                    wait_time -= 1
-                return False
-
-            if wait_loop(i):
-                break
-        if original_sentence == self.ui_sentence:
-            print(f"{ANSIColors.RED}Auto-Advance FAILED{ANSIColors.END}")
-
-    def refresh_window_list(self) -> None:
-        """Refresh the list of windows in the dropdown."""
-        self.window_list = self.get_window_list()
-        menu = self.target_window_dropdown['menu']
-        menu.delete(0, 'end')
-        for title, _ in self.window_list:
-            menu.add_command(label=title,
-                             command=lambda t=title: self.target_window_var.set(t))
-
     # threading etc
 
     def start(self):
@@ -893,8 +713,6 @@ class JpVocabUI:
                                  update_queue=self.ui_update_queue, api_override=command.api_override)
                 if command.command_type == "tts":
                     generate_tts(command.sentence)
-                if command.command_type == "auto_advance":
-                    self.auto_advance()
             except Empty:
                 pass
             except Exception as e:
@@ -982,6 +800,11 @@ class JpVocabUI:
                 is_uniqueness_okay = next_sentence not in self.all_seen_sentences
                 if is_length_okay and is_uniqueness_okay and interrupt_enabled:
                     self.trigger_auto_behavior()
+                    if self.max_auto_triggers > 0:
+                        self.max_auto_triggers -= 1
+                        print(f"{ANSIColors.UNDERLINE}{self.max_auto_triggers} auto advances left{ANSIColors.END}")
+                        if self.max_auto_triggers <= 0:
+                            sys.exit(0)
                 if settings.get_setting_fallback("general.skip_duplicate_lines", False):
                     self.all_seen_sentences.add(next_sentence.strip())
                 self.history = self.history[-self.history_length:]
@@ -996,17 +819,6 @@ class JpVocabUI:
             else:
                 if is_editing_textfield:
                     logging.info("Skipping textfield edit.")
-            if self.auto_advance_enabled.get():
-                with self.sentence_lock:
-                    self.command_queue.put(MonitorCommand(
-                        "auto_advance",
-                        self.locked_sentence,
-                        [],
-                    ))
-                self.max_auto_advances -= 1
-                print(f"{ANSIColors.UNDERLINE}{self.max_auto_advances} auto advances left{ANSIColors.END}")
-                if self.max_auto_advances <= 0:
-                    sys.exit(0)
         self.previous_clipboard = current_clipboard
 
     def consume_update(self):
