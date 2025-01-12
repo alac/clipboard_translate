@@ -144,9 +144,10 @@ def track_running_request(func):
 
 
 @track_running_request
-def run_vocabulary_list(sentence: str, temp: Optional[float] = None,
+def run_vocabulary_list(sentence: str,
+                        temp: Optional[float] = None,
                         update_queue: Optional[SimpleQueue[UIUpdateCommand]] = None,
-                        api_override: Optional[str] = None):
+                        api_override: Optional[str] = None) -> Optional[str]:
     if temp is None:
         temp = settings.get_setting('define.temperature')
     request_interrupt_atomic_swap(False)
@@ -160,7 +161,7 @@ def run_vocabulary_list(sentence: str, temp: Optional[float] = None,
         prompt = Template(template).safe_substitute(template_data)
     except FileNotFoundError as e:
         logging.error(f"Error loading prompt template: {e}")
-        return
+        return None
 
     token_stream = run_ai_request_stream(prompt,
                                          ["</task>", "</example>", "</analysis>"],
@@ -169,7 +170,7 @@ def run_vocabulary_list(sentence: str, temp: Optional[float] = None,
                                          ban_eos_token=False,
                                          max_response=500,
                                          api_override=api_override)
-    stream_with_stats(token_stream, sentence, update_queue, "define")
+    return stream_with_stats(token_stream, sentence, update_queue, "define")
 
 
 def should_generate_vocabulary_list(sentence):
@@ -190,7 +191,7 @@ def should_generate_vocabulary_list(sentence):
 @track_running_request
 def translate_with_context(history, sentence, temp=None, style="",
                            update_queue: Optional[SimpleQueue[UIUpdateCommand]] = None, index: int = 0,
-                           api_override: Optional[str] = None):
+                           api_override: Optional[str] = None) -> Optional[str]:
     if temp is None:
         temp = settings.get_setting('translate.temperature')
 
@@ -210,7 +211,7 @@ def translate_with_context(history, sentence, temp=None, style="",
         prompt = Template(template).safe_substitute(template_data)
     except FileNotFoundError as e:
         logging.error(f"Error loading prompt template: {e}")
-        return
+        return None
 
     if update_queue is not None:
         if index == 0:
@@ -225,7 +226,7 @@ def translate_with_context(history, sentence, temp=None, style="",
                                          ban_eos_token=False,
                                          max_response=100,
                                          api_override=api_override)
-    stream_with_stats(token_stream, sentence, update_queue, "translate")
+    return stream_with_stats(token_stream, sentence, update_queue, "translate")
 
 
 @track_running_request
@@ -233,7 +234,7 @@ def translate_with_context_cot(history, sentence, temp=None,
                                update_queue: Optional[SimpleQueue[UIUpdateCommand]] = None,
                                api_override: Optional[str] = None, use_examples: bool = True,
                                update_token_key: Optional[str] = 'translate',
-                               suggested_readings: Optional[str] = None):
+                               suggested_readings: Optional[str] = None) -> Optional[str]:
     if temp is None:
         temp = settings.get_setting('translate_cot.temperature')
 
@@ -272,7 +273,7 @@ def translate_with_context_cot(history, sentence, temp=None,
         prompt = Template(template).safe_substitute(template_data)
     except FileNotFoundError as e:
         logging.error(f"Error loading prompt template: {e}")
-        return
+        return None
 
     token_stream = run_ai_request_stream(prompt,
                                          ["</task>", "</example>", "</analysis>"],
@@ -284,7 +285,8 @@ def translate_with_context_cot(history, sentence, temp=None,
     result = stream_with_stats(token_stream, sentence, update_queue, update_token_key)
 
     if not result:
-        return
+        return None
+
 
     save_cot_outputs = settings.get_setting_fallback('translate_cot.save_cot_outputs', False)
     min_length_to_save_cot_output = settings.get_setting_fallback('translate_cot.min_length_to_save_cot_output', 30)
@@ -298,12 +300,13 @@ def translate_with_context_cot(history, sentence, temp=None,
         os.makedirs(folder_name, exist_ok=True)
         with open(os.path.join(folder_name, filename), "w", encoding='utf-8') as f:
             f.write(input_and_output)
+    return result
 
 
 @track_running_request
 def ask_question(question: str, sentence: str, history: list[str], temp: Optional[float] = None,
                  update_queue: Optional[SimpleQueue[UIUpdateCommand]] = None, update_token_key: str = "qanda",
-                 api_override: Optional[str] = None):
+                 api_override: Optional[str] = None) -> Optional[str]:
     if temp is None:
         temp = settings.get_setting('q_and_a.temperature')
 
@@ -332,7 +335,7 @@ def ask_question(question: str, sentence: str, history: list[str], temp: Optiona
         prompt = Template(template).safe_substitute(template_data)
     except FileNotFoundError as e:
         logging.error(f"Error loading prompt template: {e}")
-        return
+        return None
 
     token_stream = run_ai_request_stream(prompt,
                                          ["</answer>", "</task>", "</example>"],
@@ -341,7 +344,7 @@ def ask_question(question: str, sentence: str, history: list[str], temp: Optiona
                                          ban_eos_token=False,
                                          max_response=1000,
                                          api_override=api_override)
-    stream_with_stats(token_stream, sentence, update_queue, update_token_key)
+    return stream_with_stats(token_stream, sentence, update_queue, update_token_key)
 
 
 def read_file_or_throw(filepath: str) -> str:

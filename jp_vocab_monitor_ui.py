@@ -497,11 +497,6 @@ class JpVocabUI:
             self.ui_definitions = get_definitions_string(self.ui_sentence)
         elif style == TranslationType.DefineAndChainOfThought:
             self.command_queue.put(MonitorCommand(
-                "define",
-                self.ui_sentence,
-                [],
-                api_override=self.ai_service.get()))
-            self.command_queue.put(MonitorCommand(
                 "translate_cot",
                 self.ui_sentence,
                 self.history[:],
@@ -692,7 +687,11 @@ class JpVocabUI:
                     if command.include_readings:
                         if not self.ui_update_queue.empty():
                             time.sleep(3 * UPDATE_LOOP_LATENCY_MS / 1000.0)
-                        suggested_readings = self.ui_definitions
+                        self.check_rate_limiter()
+                        suggested_readings = run_vocabulary_list(command.sentence,
+                                                                 temp=command.temp,
+                                                                 update_queue=self.ui_update_queue,
+                                                                 api_override=command.api_override)
                         self.ui_definitions = ""
                     self.check_rate_limiter()
                     translate_with_context_cot(command.history,
