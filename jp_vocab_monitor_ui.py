@@ -982,11 +982,6 @@ class JpVocabUI:
                 is_uniqueness_okay = next_sentence not in self.all_seen_sentences
                 if is_length_okay and is_uniqueness_okay and interrupt_enabled:
                     self.trigger_auto_behavior()
-                    if self.auto_advance_enabled.get():
-                        self.max_auto_advances -= 1
-                        print(f"{ANSIColors.UNDERLINE}{self.max_auto_advances} auto advances left{ANSIColors.END}")
-                        if self.max_auto_advances <= 0:
-                            sys.exit(0)
                 if settings.get_setting_fallback("general.skip_duplicate_lines", False):
                     self.all_seen_sentences.add(next_sentence.strip())
                 self.history = self.history[-self.history_length:]
@@ -1001,7 +996,6 @@ class JpVocabUI:
             else:
                 if is_editing_textfield:
                     logging.info("Skipping textfield edit.")
-
             if self.auto_advance_enabled.get():
                 with self.sentence_lock:
                     self.command_queue.put(MonitorCommand(
@@ -1009,6 +1003,10 @@ class JpVocabUI:
                         self.locked_sentence,
                         [],
                     ))
+                self.max_auto_advances -= 1
+                print(f"{ANSIColors.UNDERLINE}{self.max_auto_advances} auto advances left{ANSIColors.END}")
+                if self.max_auto_advances <= 0:
+                    sys.exit(0)
         self.previous_clipboard = current_clipboard
 
     def consume_update(self):
