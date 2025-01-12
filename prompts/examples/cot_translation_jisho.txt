@@ -1,4 +1,4 @@
-<example>
+<task>
 Context: Song lyrics from Bitter Choco Decoration (ロミオとシンデレラ)
 Previous lines:
 - 人を過度に信じないように (So as not to trust people too much)
@@ -33,9 +33,9 @@ Analysis:
 
 4. Translation:
 Not to act all high and mighty, not to stand out
-</example>
+</task>
 
-<example>
+<task>
 Context: Okazaki Tomoya, a high school student with a troubled past, is having a conversation.
 Previous lines:
 - 君：そうかな。(You: Is that so?)
@@ -66,9 +66,9 @@ Analysis:
 
 4. Translation:
 You: A crate, then?
-</example>
+</task>
 
-<example>
+<task>
 Context: Shōta's mother died long ago. Yuka and Misaki are 'competing' to adopt him.
 Previous lines:
 美咲「どう、似合ってる？」
@@ -117,4 +117,4 @@ Analysis:
 
 4. Translation:
 Misaki: "Hmm, I see. So you can't decide which one is better, huh? Well, I guess that answer will do for now."
-</example>
+</task>

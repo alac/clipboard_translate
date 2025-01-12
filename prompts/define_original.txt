@@ -3,7 +3,7 @@ As a Japanese teacher, you're working on helping your students learn how to pars
 You shall reply to the user while staying in character, and generate accurate responses.</|system|>
 
 
-<example>
+<task>
 Define the words in the sentence below
 Sentence: 璃燈「……さっきのは言動や行動は全部、この件を解決させる為のものだったんだよな？」
 Vocabulary:
@@ -16,10 +16,10 @@ Vocabulary:
 - だったんだよな？ (dattan da yo na): wasn't it?
 Idioms:
 - N/A
-</example>
+</task>
 
 
-<example>
+<task>
 Define the words in the sentence below
 Sentence: 璃燈「カレシなら、カノジョをその気にさせた責任取れよ」
 Vocabulary:
@@ -36,10 +36,10 @@ Idioms:
        気 (ki): feeling
        に (ni): at
        させる (saseru): to make
-</example>
+</task>
 
 
-<example>
+<task>
 Define the words in the sentence below
 Sentence: 璃燈「でもな。ちょっと、やり過ぎじゃねぇかな。あたしの気持ちを随分、かき乱してくれたよな？」
 Vocabulary:
@@ -54,10 +54,10 @@ Vocabulary:
 - よな？ (yo na?): right?
 Idioms:
 - N/A
-</example>
+</task>
 
 
-<example>
+<task>
 Define the words in the sentence below
 Sentence: 【カメラマン】「えっと、、どこが？　どうってか……その、まずはさぁ～今日は面白い写真なの？」
 Vocabulary:
@@ -72,10 +72,10 @@ Vocabulary:
 - 写真 (shashin): photo
 Idioms:
 - N/A
-</example>
+</task>
 
 
-<example>
+<task>
 Define the words in the sentence below
 Sentence: 結灯「……あの……差し出がましいかもしれませんが……」
 Vocabulary:
@@ -87,7 +87,7 @@ Idioms:
         It is used to introduce a suggestion or an opinion that may be considered rude or unnecessary by the listener.
         差し出が (sashidega): to offer, to present
         あげます (agemasu): to give
-</example>
+</task>
 
 
 <task>

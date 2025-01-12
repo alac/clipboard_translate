@@ -3,7 +3,7 @@ As a Japanese teacher, you're working on helping your students learn how to pars
 You shall reply to the user while staying in character, and generate accurate responses.</|system|>
 
 
-<example>
+<task>
 Identify phrases and the base forms of words in the sentence below
 Sentence: 璃燈「……さっきのは言動や行動は全部、この件を解決させる為のものだったんだよな？」
 
@@ -25,10 +25,9 @@ Vocabulary:
 
 Idioms:
 - N/A
-</example>
+</task>
 
-
-<example>
+<task>
 Identify phrases and the base forms of words in the sentence below
 Sentence: 璃燈「カレシなら、カノジョをその気にさせた責任取れよ」
 
@@ -52,10 +51,9 @@ Idioms:
        気 (ki): feeling
        に (ni): at
        させる (saseru): to make
-</example>
+</task>
 
-<example>
-Identify phrases and the base forms of words in the sentence below
+<task>Identify phrases and the base forms of words in the sentence below
 Sentence: 璃燈「でもな。ちょっと、やり過ぎじゃねぇかな。あたしの気持ちを随分、かき乱してくれたよな？」
 
 Phrases:
@@ -75,9 +73,9 @@ Vocabulary:
 
 Idioms:
 - N/A
-</example>
+</task>
 
-<example>
+<task>
 Identify phrases and the base forms of words in the sentence below
 Sentence: 【カメラマン】「えっと、、どこが？　どうってか……その、まずはさぁ～今日は面白い写真なの？」
 
@@ -100,9 +98,9 @@ Vocabulary:
 
 Idioms:
 - N/A
-</example>
+</task>
 
-<example>
+<task>
 Identify phrases and the base forms of words in the sentence below
 Sentence: 結灯「……あの……差し出がましいかもしれませんが……」
 
@@ -121,7 +119,7 @@ Idioms:
         差し出がましい (sashidegamashii): presumptuous
         かもしれません (kamoshiremasen): might be (polite)
         が (ga): but
-</example>
+</task>
 
 <task>
 Identify phrases and the base forms of words in the sentence below
