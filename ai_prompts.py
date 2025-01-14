@@ -252,14 +252,16 @@ def translate_with_context_cot(history, sentence, temp=None,
         context = settings.get_setting('general.translation_context')
         if suggested_readings:
             if settings.get_setting('define_into_analysis.enable_jmdict_replacements'):
+                combine_readings = settings.get_setting_fallback('define_into_analysis.combine_all_readings', False)
                 vocab = parse_vocab_readings(suggested_readings)
-                vocab = correct_vocab_readings(vocab)
+                vocab = correct_vocab_readings(vocab, combine_readings)
 
                 if vocab:
                     readings_string = "\nSuggested Readings:"
                     for v in vocab:
-                        word_readings = ",".join(v.readings)
-                        readings_string += f"\n{v.base_form} [{word_readings}] - {v.meanings[0]}"
+                        word_readings = ",".join(set(v.readings))
+                        word_meanings = ", ".join(set(v.meanings))
+                        readings_string += f"\n{v.base_form} [{word_readings}] - {word_meanings}"
                 else:
                     logging.warning(f"No vocabulary parsed from suggested_readings: {suggested_readings}")
             else:

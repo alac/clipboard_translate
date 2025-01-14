@@ -62,6 +62,8 @@ temperature = 0.7
 # enable_jmdict_replacements changes the behavior of Define->Analysis to look up readings in JMDict.
 # The first time this is ON, it will extract JMDict which is VERY slow.
 enable_jmdict_replacements = false
+combine_all_readings = false
+
 
 [translate_best_of_three]
 # Aka 'Best of Three'. The idea is ask for three different translations and (optionally) ask the AI to pick the best one.

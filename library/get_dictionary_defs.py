@@ -138,7 +138,7 @@ def ensure_jamdict_db() -> str:
     return str(tmp_db_path)
 
 
-def correct_vocab_readings(entries: list[VocabEntry]) -> list[VocabEntry]:
+def correct_vocab_readings(entries: list[VocabEntry], combine_readings: bool = False) -> list[VocabEntry]:
     """
     Takes a list of VocabEntry and returns an updated list with verified readings.
     Preserves original entries if no readings found.
@@ -158,15 +158,28 @@ def correct_vocab_readings(entries: list[VocabEntry]) -> list[VocabEntry]:
             for candidate in candidates:
                 result = jam.lookup(candidate.base_form)
                 if result.entries:
-                    all_readings = []
-                    for jam_entry in result.entries:
-                        all_readings.extend([jaconv.kana2alphabet(jaconv.kata2hira(str(kana))) for kana in jam_entry.kana_forms])
-                    if all_readings:
-                        candidate.readings = all_readings
-                        corrected_entries.append(candidate)
+                    if combine_readings:
+                        all_readings = []
+                        for jam_entry in result.entries:
+                            all_readings.extend([jaconv.kana2alphabet(jaconv.kata2hira(str(kana))) for kana in jam_entry.kana_forms])
+                        if all_readings:
+                            candidate.readings = all_readings
+                            corrected_entries.append(candidate)
+                        else:
+                            logging.info(f"No readings found for: {entry.base_form}")
+                        break
                     else:
-                        logging.info(f"No readings found for: {entry.base_form}")
-                    break
+                        added_readings = False
+                        for jam_entry in result.entries:
+                            added_readings = True
+                            corrected_entries.append(
+                                VocabEntry(
+                                    base_form=candidate.base_form,
+                                    readings=[jaconv.kana2alphabet(jaconv.kata2hira(str(kana))) for kana in jam_entry.kana_forms],
+                                    meanings=[gloss.text for sense in jam_entry.senses for gloss in sense.gloss]
+                                ))
+                        if added_readings:
+                            break
                 else:
                     logging.info(f"No JMDict entry found for: {entry.base_form}")
         except Exception as e:
