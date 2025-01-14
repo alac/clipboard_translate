@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from fugashi import Tagger
 from jamdict import Jamdict
+from jamdict.jmdict import JMDEntry
 from pathlib import Path
 from typing import Optional
 import jaconv
@@ -198,10 +199,15 @@ def correct_vocab_readings(entries: list[VocabEntry], combine_readings: bool = F
                 ))
             for candidate in candidates:
                 result = jam.lookup(candidate.base_form)
-                if result.entries:
+                sorted_entries = sorted(result.entries,
+                                        key=compute_jamdict_priority_score,
+                                        reverse=True)
+                sorted_entries = sorted_entries[:3]
+
+                if sorted_entries:
                     if combine_readings:
                         all_readings = []
-                        for jam_entry in result.entries:
+                        for jam_entry in sorted_entries:
                             all_readings.extend([jaconv.kana2alphabet(jaconv.kata2hira(str(kana))) for kana in jam_entry.kana_forms])
                         if all_readings:
                             candidate.readings = all_readings
@@ -211,13 +217,13 @@ def correct_vocab_readings(entries: list[VocabEntry], combine_readings: bool = F
                         break
                     else:
                         added_readings = False
-                        for jam_entry in result.entries:
+                        for jam_entry in sorted_entries:
                             added_readings = True
                             corrected_entries.append(
                                 VocabEntry(
                                     base_form=candidate.base_form,
                                     readings=[jaconv.kana2alphabet(jaconv.kata2hira(str(kana))) for kana in jam_entry.kana_forms],
-                                    meanings=[gloss.text for sense in jam_entry.senses for gloss in sense.gloss]
+                                    meanings=[gloss.text for sense in jam_entry.senses for gloss in sense.gloss[:3]]
                                 ))
                         if added_readings:
                             break
@@ -226,6 +232,51 @@ def correct_vocab_readings(entries: list[VocabEntry], combine_readings: bool = F
         except Exception as e:
             logging.error(f"Error looking up {entry.base_form}: {str(e)}")
     return corrected_entries
+
+
+def compute_jamdict_priority_score(entry: JMDEntry):
+    if not entry:
+        return 0
+
+    def get_score_for_tag(score_tag):
+        # News rankings (based on frequency in the Mainichi Shimbun)
+        # news1: top 12,000 words
+        # news2: next 12,000 words
+        # news3/news4: lower priority
+        if tag == 'news1': return 30    # Very common in newspapers
+        elif tag == 'news2': return 20  # Common in newspapers
+        elif tag.startswith('news'): return 10  # Less common news words
+
+        # Ichimango rankings (basic vocabulary list for learners)
+        # ichi1: appears in the first 5,000 words
+        # ichi2: appears in the second 5,000 words
+        if tag == 'ichi1': return 30    # Basic/essential vocabulary
+        elif tag == 'ichi2': return 20  # Important vocabulary
+
+        # Gakken rankings (basic Japanese dictionary)
+        # gai1: first 2,000 words
+        # gai2: next 2,000 words
+        if tag == 'gai1': return 30     # Most common/basic words
+        elif tag == 'gai2': return 20   # Common words
+
+        # Special treatment markers
+        # spec1: common loanwords
+        # spec2: common kanji combinations
+        if tag == 'spec1': return 15    # Common loanwords
+        elif tag == 'spec2': return 15  # Common kanji compounds
+        return 0
+
+    score = 0
+    for form in entry.kanji_forms:
+        for tag in form.pri:
+            score += get_score_for_tag(tag)
+        return score
+
+    for form in entry.kana_forms:
+        for tag in form.pri:
+            score += get_score_for_tag(tag)
+        return score
+    return 0
 
 
 def hiragana_reading(katakana_reading: str) -> str:
