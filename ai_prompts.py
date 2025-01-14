@@ -266,6 +266,7 @@ def translate_with_context_cot(history, sentence, temp=None,
                     logging.warning(f"No vocabulary parsed from suggested_readings: {suggested_readings}")
             else:
                 readings_string = "\nSuggested Readings:" + suggested_readings
+            print(f"{ANSIColors.INVERSE}{readings_string}{ANSIColors.END}")
         template_data = {
             'examples': examples,
             'context': context + readings_string,
