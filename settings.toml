@@ -54,6 +54,9 @@ temperature = 0.7
 # Aka 'With Analysis (CoT)'. The idea is to ask questions to direct the translation.
 cot_prompt_filepath = "prompts/cot_translation.txt"
 cot_examples_filepath = "prompts/examples/cot_translation_original.txt"
+# Saving COT outputs requires save_cot_outputs to be true, and for the current provider to be in
+# save_cot_outputs_ai_providers.
+save_cot_outputs_ai_providers = ["Gemini", "OpenAI", "Oogabooga"]
 save_cot_outputs = false
 temperature = 0.7
 
