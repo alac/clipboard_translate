@@ -12,7 +12,7 @@ import time
 import sys
 
 from library.ai_requests import run_ai_request_stream
-from library.get_dictionary_defs import correct_vocab_readings, parse_vocab_readings
+from library.get_dictionary_defs import correct_vocab_readings, parse_vocab_readings_alt
 from library.settings_manager import settings
 
 
@@ -253,14 +253,14 @@ def translate_with_context_cot(history, sentence, temp=None,
         if suggested_readings:
             if settings.get_setting('define_into_analysis.enable_jmdict_replacements'):
                 combine_readings = settings.get_setting_fallback('define_into_analysis.combine_all_readings', False)
-                vocab = parse_vocab_readings(suggested_readings)
+                vocab = parse_vocab_readings_alt(suggested_readings)
                 vocab = correct_vocab_readings(vocab, combine_readings)
 
                 if vocab:
                     readings_string = "\nSuggested Readings:"
                     for v in vocab:
                         word_readings = ",".join(set(v.readings))
-                        word_meanings = ", ".join(set(v.meanings))
+                        word_meanings = "; ".join(set(v.meanings))
                         readings_string += f"\n{v.base_form} [{word_readings}] - {word_meanings}"
                 else:
                     logging.warning(f"No vocabulary parsed from suggested_readings: {suggested_readings}")

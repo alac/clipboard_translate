@@ -10,6 +10,7 @@ import lzma
 import os
 import re
 import shutil
+import traceback
 
 _sentence_parser = None  # type: Optional[Tagger]
 _meaning_dict = {}   # type: dict[str, str]
@@ -99,6 +100,46 @@ def parse_vocab_readings(text: str) -> list[VocabEntry]:
                 meanings=[meaning.strip()]
             ))
 
+    return vocab_entries
+
+
+def parse_vocab_readings_alt(text: str) -> list[VocabEntry]:
+    """
+    extracts '件' from a line like:
+    - 件 [base form] (ken): matter, case
+    or:
+    - 件 (ken): matter, case
+    """
+    vocab = text
+    if "Vocabulary:" in vocab:
+        _phrases, vocab = vocab.split("Vocabulary:")
+    if "Idioms:" in vocab:
+        vocab, _idioms = vocab.split("Idioms:")
+
+    vocab_entries = []
+    for line in vocab.splitlines():
+        if line.startswith("- "):
+            line = line[2:]
+        if "[base form" in line:
+            word, rest = line.split("[base form", 1)
+            if "]" in rest:
+                _junk, rest = rest.split("]", 1)
+        elif "(" in line:
+            word, rest = line.split("(", 1)
+        else:
+            continue
+        if ":" in rest:
+            reading, meaning = rest.split(":", 1)
+        elif "-" in rest:
+            reading, meaning = rest.split("-", 1)
+        else:
+            continue
+        reading = reading.replace(")", "").replace("]", "")
+        vocab_entries.append(VocabEntry(
+            base_form=word.strip(),
+            readings=[reading.strip()],
+            meanings=[meaning.strip()]
+        ))
     return vocab_entries
 
 
