@@ -1,0 +1,137 @@
+<|input|>
+Scene:
+<description>
+  <synopsis>
+    Song lyrics from Bitter Choco Decoration (ロミオとシンデレラ)
+  </synopsis>
+</description>
+
+Previous lines:
+- 人を過度に信じないように (So as not to trust people too much)
+- 愛さないように期待しないように (So as not to love, so as not to expect)
+- かと言って角が立たないように (Yet, so as not to create conflict)
+
+Japanese:
+気取らぬように目立たぬように
+
+<|analysis|>
+1. Context:
+• Part of series of self-imposed restrictions
+• Poetic/lyrical register
+
+2. Vocabulary and Readings:
+気取る [kidoru] - to put on airs, to act affected
+目立つ [medatsu] - to stand out, to be conspicuous
+ぬ [nu] - archaic negative suffix
+ように [youni] - so as to, in order to
+
+3. Idioms/Nuances:
+• 気取る often has negative connotations of pretentiousness
+• 目立つ can be positive or negative depending on context
+• ぬ adds poetic/archaic feel vs standard ない
+
+4. Translation:
+Not to act all high and mighty, not to stand out
+<|end|>
+
+<|input|>
+Scene:
+<description>
+  <synopsis>
+    A high school story featuring Okazaki Tomoya, a student with a troubled past.
+  </synopsis>
+  <characters>
+    <character name="智代" romaji="Tomoyo">
+      A female student talking with the protagonist.
+    </character>
+  </characters>
+</description>
+
+Previous lines:
+- 君：そうかな。
+- 智代：キューバの荷物じゃないよ。似た響きだけど。
+- 君：じゃあ小包？
+- 智代：それじゃ小さすぎる。
+
+Suggested Readings:
+木箱 [kibako] - wooden box, crate
+
+Japanese:
+君：木箱？
+
+<|analysis|>
+1. Context:
+• Part of guessing game conversation
+• Progressive size increase in guesses
+• Casual student dialogue
+
+2. Vocabulary and Readings:
+君 [kimi] - you (casual)
+木箱 [kibako] - wooden box, crate
+ - 木 [ki] - wood
+ - 箱 [hako] - box
+
+3. Idioms/Nuances:
+• Simple guessing question
+• Casual form matches student-to-student dialogue
+• Gender note: Speaker's gender is known from context
+
+4. Translation:
+You: A crate, then?
+<|end|>
+
+<|input|>
+Scene:
+<description>
+  <synopsis>
+    A story about Shōta, whose mother died long ago, and two women (Yuka and Misaki) who are 'competing' to adopt him.
+  </synopsis>
+  <characters>
+    <character name="美咲" romaji="Misaki">
+      One of the potential adoptive mothers.
+    </character>
+    <character name="翔太" romaji="Shōta">
+      The child at the center of the adoption situation.
+    </character>
+  </characters>
+</description>
+
+Previous lines:
+美咲「どう、似合ってる？」
+翔太「へぇ、由香さんが着てたのとデザインは同じなのに着る人で随分印象変わるな」
+美咲「すぐに由香さんと比較してぇ……で、しょう君的にはどっちが似合ってるの？」
+翔太「え、ええっ！？　ええっと……」
+正直、両方似合っているので甲乙つけがたいんだけど……。
+しかし、美咲さんはそれが不満なようでムッとした顔を僕の顔に近付ける。
+美咲「もう、しょう君ったら。ここは、『美咲ママに決まってるよ』って即答しないとダメでしょ」
+翔太「そんなこと言われても、困るよ。それぞれの良さがあるし」
+
+Suggested Readings:
+甲乙 [kouatsu] - distinction
+及第点 [kyuudaiten] - passing grade
+
+Japanese:
+美咲「ふむふむ、なるほど。つまり甲乙つけがたいって事ね。ま、一応その答は及第点」
+
+<|analysis|>
+1. Context:
+• Playful conversation about comparing outfits
+• Semi-casual, familiar setting
+
+2. Vocabulary and Readings:
+ふむふむ [fumufumu] - hmm, I see (thoughtful)
+なるほど [naruhodo] - I see, indeed
+つまり [tsumari] - in other words
+甲乙つけがたい [kouatsu tsukegatai] - hard to choose between
+って事 [tte koto] - meaning that (casual)
+一応 [ichiou] - for now, somewhat
+及第点 [kyuudaiten] - passing grade
+
+3. Idioms/Nuances:
+• ふむふむ and なるほど are common interjections showing understanding
+• って事ね adds a casual and playful tone
+• 及第点 implies acceptable but not outstanding performance
+
+4. Translation:
+Misaki: "Hmm, I see. So you can't decide which one is better, huh? Well, I guess that answer will do for now."
+<|end|>

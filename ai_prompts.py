@@ -276,7 +276,7 @@ def translate_with_context_cot(history, sentence, temp=None,
         return None
 
     token_stream = run_ai_request_stream(prompt,
-                                         ["</english>", "</task>", "</analysis>"],
+                                         ["</english>", "</task>", "</analysis>", "<|end|>"],
                                          print_prompt=False,
                                          temperature=temp,
                                          ban_eos_token=False,
