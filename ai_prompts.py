@@ -248,7 +248,7 @@ def translate_with_context_cot(history, sentence, temp=None,
         examples = read_file_or_throw(examples_file) if use_examples else ""
         previous_lines = ""
         if history:
-            previous_lines = "Previous lines:\n" + "\n".join(f"- {line}" for line in history)
+            previous_lines = "\n" + "\n".join(f"- {line}" for line in history)
         context = settings.get_setting('general.translation_context')
         if suggested_readings:
             if settings.get_setting('define_into_analysis.enable_jmdict_replacements'):
@@ -262,15 +262,17 @@ def translate_with_context_cot(history, sentence, temp=None,
                         word_readings = ",".join(set(v.readings))
                         word_meanings = "; ".join(set(v.meanings))
                         readings_string += f"\n{v.base_form} [{word_readings}] - {word_meanings}"
+                    readings_string += "\n"
                 else:
                     logging.warning(f"No vocabulary parsed from suggested_readings: {suggested_readings}")
             else:
-                readings_string = "\nSuggested Readings:" + suggested_readings
+                readings_string = "\nSuggested Readings:" + suggested_readings + "\n"
             print(f"{ANSIColors.INVERSE}{readings_string}{ANSIColors.END}")
         template_data = {
             'examples': examples,
-            'context': context + readings_string,
+            'context': context,
             'previous_lines': previous_lines,
+            'suggested_readings': readings_string,
             'sentence': sentence
         }
         prompt = Template(template).safe_substitute(template_data)
