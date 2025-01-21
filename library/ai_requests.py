@@ -46,6 +46,9 @@ def run_ai_request_stream(prompt: str, custom_stopping_strings: Optional[list[st
                           max_response: int = 2048, ban_eos_token: bool = True, print_prompt=True,
                           api_override: Optional[str] = None):
     api_choice = settings.get_setting('ai_settings.api')
+
+    print(prompt)
+
     if api_override:
         api_choice = api_override
     if api_choice == AI_SERVICE_OOBABOOGA:
