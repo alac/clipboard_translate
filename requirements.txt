@@ -10,3 +10,4 @@ unidic
 jamdict
 pywin32
 jaconv
+pydantic
