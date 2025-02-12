@@ -1,7 +1,7 @@
 # This is the settings file. To override values here, create a user.toml by coping this.
 
 [ai_settings]
-# Oogabooga or Gemini or OpenAI
+# Oogabooga or Gemini or OpenAI or TabbyAPI
 api = "Oogabooga"
 
 [oobabooga_api]
@@ -9,6 +9,10 @@ request_url = 'http://127.0.0.1:5000/v1/completions'
 context_length = 4096
 # preset_name should be a oobabooga preset; 'none' will use the defaults hardcoded into library/ai_requests.py
 preset_name = 'none'
+
+[tabby_api]
+request_url = ""
+api_key = ""
 
 [openai_api]
 # supports service that implements a OpenAI-Completions endpoint
