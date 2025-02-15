@@ -1,6 +1,6 @@
 azure-cognitiveservices-speech
 fugashi[unidic]~=1.3.2
-google-generativeai
+google-genai
 pyperclip~=1.8.2
 requests~=2.31.0
 sentencepiece~=0.2.0
@@ -11,3 +11,4 @@ jamdict
 pywin32
 jaconv
 pydantic
+certifi
