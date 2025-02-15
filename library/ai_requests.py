@@ -6,6 +6,7 @@ import os
 import requests
 import sseclient
 import urllib3
+import certifi
 from pydantic import BaseModel, ValidationError, create_model
 from typing import Optional, Union, Type, get_args, get_origin, Any, Callable
 import inspect
@@ -16,6 +17,12 @@ AI_SERVICE_OOBABOOGA = "Oogabooga"
 AI_SERVICE_OPENAI = "OpenAI"
 AI_SERVICE_GEMINI = "Gemini"
 AI_SERVICE_TABBYAPI = "TabbyAPI"
+
+
+http = urllib3.PoolManager(
+    cert_reqs="CERT_REQUIRED",
+    ca_certs=certifi.where()
+)
 
 
 class EmptyResponseException(ValueError):
@@ -175,13 +182,15 @@ def run_ai_request_openai_style(
     else:
         raise ValueError(f"Invalid service: {api_choice}")
 
-    stream_response = requests.post(
+    http_client = create_http_client()
+    response = http_client.request(
+        "POST",
         request_url,
         headers=headers,
-        json=data,
-        verify=False,
-        stream=True)
-    client = sseclient.SSEClient(stream_response)
+        body=json.dumps(data),  # Encode data as JSON string
+        preload_content=False,  # Crucial for streaming
+    )
+    client = sseclient.SSEClient(response)
 
     full_text = ""
     if print_prompt:
