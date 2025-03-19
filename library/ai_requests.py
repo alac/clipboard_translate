@@ -10,12 +10,14 @@ import certifi
 from pydantic import BaseModel, ValidationError, create_model
 from typing import Optional, Union, Type, get_args, get_origin, Any, Callable
 import inspect
+import anthropic
 
 from library.settings_manager import settings, ROOT_FOLDER
 
+AI_SERVICE_CLAUDE = "Claude"
+AI_SERVICE_GEMINI = "Gemini"
 AI_SERVICE_OOBABOOGA = "Oogabooga"
 AI_SERVICE_OPENAI = "OpenAI"
-AI_SERVICE_GEMINI = "Gemini"
 AI_SERVICE_TABBYAPI = "TabbyAPI"
 
 
@@ -136,6 +138,15 @@ def _run_ai_request_stream(
             yield tok
     elif api_choice == AI_SERVICE_GEMINI:
         for chunk in run_ai_request_gemini_pro(
+                prompt,
+                base_model,
+                structured_result_callback,
+                custom_stopping_strings,
+                temperature,
+                max_response):
+            yield chunk
+    elif api_choice == AI_SERVICE_CLAUDE:  # Add Claude case
+        for chunk in run_ai_request_claude(
                 prompt,
                 base_model,
                 structured_result_callback,
@@ -405,6 +416,64 @@ def run_ai_request_gemini_pro(
             print("DID NOT HAVE RESPONSE PARSED")
 
     return response.text
+
+
+def run_ai_request_claude(
+        prompt: str,
+        base_model: Optional[Type[BaseModel]],
+        structured_result_callback: Callable[[Any], None],
+        custom_stopping_strings: Optional[list[str]] = None,
+        temperature: float = .1,
+        max_response: int = 2048):
+    """Run request using Claude Sonnet API with streaming support."""
+
+    api_key = settings.get_setting('claude_api.api_key')
+    model = settings.get_setting_fallback('claude_api.model', 'claude-3-sonnet-20240229')
+    system_prompt = settings.get_setting_fallback('claude_api.system_prompt', '')
+
+    # Initialize the Anthropic client
+    client = anthropic.Anthropic(api_key=api_key)
+
+    # Format messages for Claude
+    messages = [{"role": "user", "content": prompt}]
+
+    # Add special instruction for JSON output if we have a Pydantic model
+    if base_model:
+        json_format_instruction = f"Respond with valid JSON that matches this schema: {base_model.model_json_schema()}"
+        if system_prompt:
+            system_prompt += "\n" + json_format_instruction
+        else:
+            system_prompt = json_format_instruction
+
+    # Prepare stop sequences
+    stop_sequences = custom_stopping_strings if custom_stopping_strings else None
+
+    # Create the streaming response
+    with client.messages.stream(
+            model=model,
+            max_tokens=max_response,
+            temperature=temperature,
+            system=system_prompt,
+            messages=messages,
+            stop_sequences=stop_sequences
+    ) as stream:
+        full_text = ""
+
+        with open(os.path.join(ROOT_FOLDER, "response.txt"), "w", encoding='utf-8') as f:
+            for text in stream.text_stream:
+                print(text, end="")
+                f.write(text)
+                full_text += text
+                yield text
+
+    # Process structured output if needed
+    if base_model:
+        try:
+            structured_object = base_model.model_validate_json(full_text)
+            structured_result_callback(structured_object)
+        except ValidationError as e:
+            print(f"Unpacking Pydantic model failed. Full text:\n---\n{full_text}\n---\n")
+            raise e
 
 
 def create_strict_schema(model: Type[BaseModel]) -> Type[BaseModel]:

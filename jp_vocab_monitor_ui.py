@@ -22,7 +22,7 @@ from ai_prompts import (should_generate_vocabulary_list, UIUpdateCommand, run_vo
                         request_interrupt_atomic_swap, ANSIColors, ask_question, is_request_ongoing)
 from library.get_dictionary_defs import get_definitions_string
 from library.settings_manager import settings
-from library.ai_requests import AI_SERVICE_GEMINI, AI_SERVICE_OOBABOOGA, AI_SERVICE_OPENAI
+from library.ai_requests import AI_SERVICE_GEMINI, AI_SERVICE_OOBABOOGA, AI_SERVICE_OPENAI, AI_SERVICE_CLAUDE, AI_SERVICE_TABBYAPI
 from library.rate_limiter import RateLimiter
 
 
@@ -252,7 +252,9 @@ class JpVocabUI:
             self.ai_service,
             AI_SERVICE_OOBABOOGA,
             AI_SERVICE_GEMINI,
-            AI_SERVICE_OPENAI
+            AI_SERVICE_OPENAI,
+            AI_SERVICE_CLAUDE,
+            AI_SERVICE_TABBYAPI
         )
         ai_dropdown.pack(side=tk.LEFT, padx=2)
 

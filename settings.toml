@@ -30,6 +30,11 @@ system_prompt = """Respond directly with only the requested information.
 Do not add any conversational elements, greetings, or explanations.
 Use examples provided as a guide and follow the pattern to complete the task."""
 
+[claude_api]
+api_key = "YOUR_ANTHROPIC_API_KEY"
+model = "claude-3-7-sonnet-20250219"
+system_prompt = "You are a helpful AI assistant."
+
 [azure_tts]
 # Azure has a generous speech synthesis free plan
 # Follow the instructions here to setup an account: https://learn.microsoft.com/en-us/azure/ai-services/speech-service/get-started-text-to-speech?tabs=windows%2Cterminal&pivots=programming-language-python#prerequisites

@@ -12,3 +12,4 @@ pywin32
 jaconv
 pydantic
 certifi
+anthropic
