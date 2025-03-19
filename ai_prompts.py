@@ -164,7 +164,7 @@ def run_vocabulary_list(sentence: str,
         return None
 
     token_stream = run_ai_request_stream(prompt,
-                                         ["</task>", "</|system|>"],
+                                         ["</task>", "</|system|>", "</|", "<|"],
                                          print_prompt=False,
                                          temperature=temp,
                                          ban_eos_token=False,
@@ -220,7 +220,7 @@ def translate_with_context(history, sentence, temp=None, style="",
             update_queue.put(UIUpdateCommand("translate", sentence, f"#{index}. "))
 
     token_stream = run_ai_request_stream(prompt,
-                                         ["</english>", "</task>", "</analysis>"],
+                                         ["</english>", "</task>", "</analysis>", "</|", "<|"],
                                          print_prompt=False,
                                          temperature=temp,
                                          ban_eos_token=False,
@@ -281,7 +281,7 @@ def translate_with_context_cot(history, sentence, temp=None,
         return None
 
     token_stream = run_ai_request_stream(prompt,
-                                         ["</english>", "</task>", "</analysis>", "<|end|>"],
+                                         ["</english>", "</task>", "</analysis>", "</|", "<|"],
                                          print_prompt=False,
                                          temperature=temp,
                                          ban_eos_token=False,
@@ -301,6 +301,10 @@ def translate_with_context_cot(history, sentence, temp=None,
                         in settings.get_setting_fallback('translate_cot.save_cot_outputs_ai_providers', []))
     min_length_to_save_cot_output = settings.get_setting_fallback('translate_cot.min_length_to_save_cot_output', 30)
     if len(sentence) > min_length_to_save_cot_output and save_cot_outputs:
+        last_tag_start = result.rfind("<")
+        if last_tag_start != -1 and last_tag_start > result.rfind("\n"):
+            result = result[:last_tag_start]
+
         input_and_output = prompt.replace(examples, "") + "\n" + result
 
         human_readable = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -348,7 +352,7 @@ def ask_question(question: str, sentence: str, history: list[str], temp: Optiona
         return None
 
     token_stream = run_ai_request_stream(prompt,
-                                         ["</answer>", "</task>"],
+                                         ["</answer>", "</task>", "</|", "<|"],
                                          print_prompt=False,
                                          temperature=temp,
                                          ban_eos_token=False,
