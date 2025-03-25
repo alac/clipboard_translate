@@ -8,9 +8,10 @@ import sseclient
 import urllib3
 import certifi
 from pydantic import BaseModel, ValidationError, create_model
-from typing import Optional, Union, Type, get_args, get_origin, Any, Callable
+from typing import Optional, Union, Type, get_args, get_origin, Any, Callable, Literal
 import inspect
 import anthropic
+import google.api_core.exceptions
 
 from library.settings_manager import settings, ROOT_FOLDER
 
@@ -20,6 +21,13 @@ AI_SERVICE_OOBABOOGA = "Oogabooga"
 AI_SERVICE_OPENAI = "OpenAI"
 AI_SERVICE_TABBYAPI = "TabbyAPI"
 
+AiServiceType = Literal[
+    AI_SERVICE_CLAUDE,
+    AI_SERVICE_GEMINI,
+    AI_SERVICE_OOBABOOGA,
+    AI_SERVICE_OPENAI,
+    AI_SERVICE_TABBYAPI,
+]
 
 http = urllib3.PoolManager(
     cert_reqs="CERT_REQUIRED",
@@ -29,6 +37,14 @@ http = urllib3.PoolManager(
 
 class EmptyResponseException(ValueError):
     pass
+
+
+class RateLimitError(Exception):
+    """Exception raised when API rate limit is hit."""
+
+    def __init__(self, retry_after_seconds):
+        self.retry_after_seconds = retry_after_seconds
+        super().__init__(f"API rate limit exceeded. Retry after {retry_after_seconds} seconds.")
 
 
 def create_http_client():
@@ -45,10 +61,11 @@ def run_ai_request(
         clean_blank_lines: bool = True,
         max_response: int = 2048,
         ban_eos_token: bool = True,
-        print_prompt=True):
+        print_prompt=True,
+        api_override: Optional[str] = None):
     result = ""
     for tok in run_ai_request_stream(prompt, custom_stopping_strings, temperature, max_response,
-                                     ban_eos_token, print_prompt):
+                                     ban_eos_token, print_prompt, api_override):
         result += tok
     if clean_blank_lines:
         result = "\n".join([line for line in "".join(result).splitlines() if len(line.strip()) > 0])
@@ -67,6 +84,7 @@ def run_ai_request_stream(
         api_override: Optional[str] = None):
     def capture_callback(_structured_object: Any):
         pass
+
     for tok in _run_ai_request_stream(prompt,
                                       None,
                                       capture_callback,
@@ -366,41 +384,47 @@ def run_ai_request_gemini_pro(
         custom_stopping_strings: Optional[list[str]] = None,
         temperature: float = .1,
         max_response: int = 2048):
-
     response_type = 'application/json' if base_model else None
     response_schema = create_strict_schema(base_model) if base_model else None
     system_prompt = settings.get_setting('gemini_pro_api.system_prompt')
 
-    client = google_genai.Client(api_key=settings.get_setting('gemini_pro_api.api_key'))
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=system_prompt + "\n" + prompt,
-        config={
-            'response_mime_type': response_type,
-            'response_schema': response_schema,
-            'safety_settings': [
-                {
-                    'category': google_genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-                    'threshold': google_genai.types.HarmBlockThreshold.BLOCK_NONE
-                 },
-                {
-                    'category': google_genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                    'threshold': google_genai.types.HarmBlockThreshold.BLOCK_NONE
-                },
-                {
-                    'category': google_genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                    'threshold': google_genai.types.HarmBlockThreshold.BLOCK_NONE
-                },
-                {
-                    'category': google_genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                    'threshold': google_genai.types.HarmBlockThreshold.BLOCK_NONE
-                },
-            ],
-            'temperature': temperature,
-            'stop_sequences': custom_stopping_strings,
-            'max_output_tokens': max_response,
-        },
-    )
+    try:
+        client = google_genai.Client(api_key=settings.get_setting('gemini_pro_api.api_key'))
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=system_prompt + "\n" + prompt,
+            config={
+                'response_mime_type': response_type,
+                'response_schema': response_schema,
+                'safety_settings': [
+                    {
+                        'category': google_genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                        'threshold': google_genai.types.HarmBlockThreshold.BLOCK_NONE
+                    },
+                    {
+                        'category': google_genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                        'threshold': google_genai.types.HarmBlockThreshold.BLOCK_NONE
+                    },
+                    {
+                        'category': google_genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                        'threshold': google_genai.types.HarmBlockThreshold.BLOCK_NONE
+                    },
+                    {
+                        'category': google_genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                        'threshold': google_genai.types.HarmBlockThreshold.BLOCK_NONE
+                    },
+                ],
+                'temperature': temperature,
+                'stop_sequences': custom_stopping_strings,
+                'max_output_tokens': max_response,
+            },
+        )
+    except google.api_core.exceptions.ResourceExhausted as e:
+        print(f"Gemini rate limit encountered: {e}")
+        retry_delay = None
+        if hasattr(e, 'retry_info') and e.retry_info:
+            retry_delay = e.retry_info.retry_delay
+        raise RateLimitError(retry_delay)
 
     print(response.text)
 
@@ -412,7 +436,7 @@ def run_ai_request_gemini_pro(
             structured_result_callback(response.parsed)
             print("HAD RESPONSE PARSED")
         else:
-            structured_result_callback(base_model.parse_raw(response.text))
+            structured_result_callback(base_model.model_validate_json(response.text))
             print("DID NOT HAVE RESPONSE PARSED")
 
     return response.text
@@ -448,32 +472,49 @@ def run_ai_request_claude(
     # Prepare stop sequences
     stop_sequences = custom_stopping_strings if custom_stopping_strings else None
 
-    # Create the streaming response
-    with client.messages.stream(
-            model=model,
-            max_tokens=max_response,
-            temperature=temperature,
-            system=system_prompt,
-            messages=messages,
-            stop_sequences=stop_sequences
-    ) as stream:
-        full_text = ""
+    try:
+        # Create the streaming response
+        with client.messages.stream(
+                model=model,
+                max_tokens=max_response,
+                temperature=temperature,
+                system=system_prompt,
+                messages=messages,
+                stop_sequences=stop_sequences
+        ) as stream:
+            full_text = ""
 
-        with open(os.path.join(ROOT_FOLDER, "response.txt"), "w", encoding='utf-8') as f:
-            for text in stream.text_stream:
-                print(text, end="")
-                f.write(text)
-                full_text += text
-                yield text
+            with open(os.path.join(ROOT_FOLDER, "response.txt"), "w", encoding='utf-8') as f:
+                for text in stream.text_stream:
+                    print(text, end="")
+                    f.write(text)
+                    full_text += text
+                    yield text
 
-    # Process structured output if needed
-    if base_model:
-        try:
-            structured_object = base_model.model_validate_json(full_text)
-            structured_result_callback(structured_object)
-        except ValidationError as e:
-            print(f"Unpacking Pydantic model failed. Full text:\n---\n{full_text}\n---\n")
-            raise e
+        # Process structured output if needed
+        if base_model:
+            try:
+                structured_object = base_model.model_validate_json(full_text)
+                structured_result_callback(structured_object)
+            except ValidationError as e:
+                print(f"Unpacking Pydantic model failed. Full text:\n---\n{full_text}\n---\n")
+                raise e
+
+    except anthropic.APIStatusError as e:
+        if e.status_code == 429:  # 429 is the HTTP status code for "Too Many Requests"
+            # Extract retry-after header - default to 60 if not present
+            retry_after = int(e.response.headers.get("retry-after", 60))
+            raise RateLimitError(retry_after)
+        else:
+            # Re-raise other API errors
+            raise
+    except anthropic.RateLimitError as e:
+        # The Anthropic library might also raise a specific RateLimitError
+        # Extract retry-after from headers or message if available
+        retry_after = 60  # Default fallback
+        if hasattr(e, 'response') and hasattr(e.response, 'headers'):
+            retry_after = int(e.response.headers.get("retry-after", 60))
+        raise RateLimitError(retry_after)
 
 
 def create_strict_schema(model: Type[BaseModel]) -> Type[BaseModel]:
@@ -522,6 +563,7 @@ if __name__ == "__main__":
     class Capital(BaseModel):
         name: str
 
+
     output = run_ai_request_structured_output(
         "What is the capital of france? Provide the answer as a json with the key 'name'.\n",
         Capital,
@@ -556,11 +598,11 @@ if __name__ == "__main__":
     print(output)
 
     for token in run_ai_request_stream(
-        "What is the capital of france?",
-        ['\n'],
-        .1,
-        200,
-        False,
-        False,
+            "What is the capital of france?",
+            ['\n'],
+            .1,
+            200,
+            False,
+            False,
             AI_SERVICE_TABBYAPI):
         print(token, end=None)
