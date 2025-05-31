@@ -22,3 +22,5 @@ Japanese:
 ${sentence}
 
 <|analysis|>
+<think>
+</think>
