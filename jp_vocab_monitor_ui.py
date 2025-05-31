@@ -16,6 +16,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+import datetime
 
 from ai_prompts import (should_generate_vocabulary_list, UIUpdateCommand, run_vocabulary_list,
                         translate_with_context, translate_with_context_cot,
@@ -114,6 +115,10 @@ class JpVocabUI:
         # transient ui state
         self.last_textfield_value = ""
         self.show_qanda = False
+
+        # stats
+        self.start_time = datetime.datetime.now()
+        self.total_copied_lines = 0
 
         # state for tkinter
         self.ai_service = None  # type: Optional[tk.StringVar]
@@ -344,6 +349,9 @@ class JpVocabUI:
             json.dump(self.history, f, indent=2)
 
         self.tk_root.destroy()
+
+        print(f"Total Uptime {datetime.datetime.now() - self.start_time}")
+        print(f"Total Copied Lines {self.total_copied_lines}")
 
     @staticmethod
     def create_tooltip(widget, text):
@@ -757,6 +765,7 @@ class JpVocabUI:
                 if not any([(current_clipboard in previous or previous in current_clipboard) for previous in
                             self.history]):
                     self.history.append(current_clipboard)
+                self.total_copied_lines += 1
                 next_sentence = current_clipboard
                 interrupt_enabled = (settings.get_setting_fallback("general.enable_interrupt", True)
                                      or not is_request_ongoing())
