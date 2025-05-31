@@ -9,16 +9,19 @@ request_url = 'http://127.0.0.1:5000/v1/completions'
 context_length = 4096
 # preset_name should be a oobabooga preset; 'none' will use the defaults hardcoded into library/ai_requests.py
 preset_name = 'none'
+system_prompt = ""
 
 [tabby_api]
 request_url = ""
 api_key = ""
+system_prompt = ""
 
 [openai_api]
 # supports service that implements a OpenAI-Completions endpoint
 request_url = ""
 model = ""
 api_key = ""
+system_prompt = ""
 
 [gemini_pro_api]
 # You can get a free api key here: https://ai.google.dev/gemini-api/docs/api-key

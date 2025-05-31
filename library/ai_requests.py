@@ -251,6 +251,9 @@ def prep_openai_request(
         temperature: float = .1,
         max_response: int = 2048):
     request_url = settings.get_setting('openai_api.request_url')
+    system_prompt = settings.get_setting('openai_api.system_prompt')
+    if system_prompt:
+        prompt = system_prompt + "\n" + prompt
     data = {
         "model": settings.get_setting('openai_api.model'),
         "prompt": prompt,
@@ -285,6 +288,10 @@ def prep_tabby_request(
         temperature: float = .1,
         max_response: int = 2048):
     request_url = settings.get_setting('tabby_api.request_url')
+    system_prompt = settings.get_setting('tabby_api.system_prompt')
+    if system_prompt:
+        prompt = system_prompt + "\n" + prompt
+
     data = {
         "prompt": prompt,
         "echo": False,
@@ -330,6 +337,10 @@ def prep_oogabooga_request(
     api_key = settings.get_setting_fallback('oobabooga_api.api_key', None)
     if api_key:
         headers['Authorization'] = f'Bearer {api_key}'
+
+    system_prompt = settings.get_setting('oobabooga_api.system_prompt')
+    if system_prompt:
+        prompt = system_prompt + "\n" + prompt
 
     data = {
         "prompt": prompt,
