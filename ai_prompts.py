@@ -281,11 +281,11 @@ def translate_with_context_cot(history, sentence, temp=None,
         return None
 
     token_stream = run_ai_request_stream(prompt,
-                                         ["</english>", "</task>", "</analysis>", "</|", "<|"],
+                                         ["</english>", "</task>", "</analysis>", "</|", "</"],
                                          print_prompt=False,
                                          temperature=temp,
                                          ban_eos_token=False,
-                                         max_response=1000,
+                                         max_response=3000,
                                          api_override=api_override)
     result = stream_with_stats(token_stream, sentence, update_queue, update_token_key)
 
