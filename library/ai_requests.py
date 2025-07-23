@@ -395,6 +395,9 @@ def run_ai_request_gemini_pro(
         custom_stopping_strings: Optional[list[str]] = None,
         temperature: float = .1,
         max_response: int = 2048):
+    if len(custom_stopping_strings) > 5:
+        custom_stopping_strings = custom_stopping_strings[:5]
+
     response_type = 'application/json' if base_model else None
     response_schema = create_strict_schema(base_model) if base_model else None
     system_prompt = settings.get_setting('gemini_pro_api.system_prompt')
