@@ -119,6 +119,7 @@ class JpVocabUI:
         # stats
         self.start_time = datetime.datetime.now()
         self.total_copied_lines = 0
+        self.total_ai_requests = 0
 
         # state for tkinter
         self.ai_service = None  # type: Optional[tk.StringVar]
@@ -352,6 +353,7 @@ class JpVocabUI:
 
         print(f"Total Uptime {datetime.datetime.now() - self.start_time}")
         print(f"Total Copied Lines {self.total_copied_lines}")
+        print(f"Total AI Requests {self.total_ai_requests}")
 
     @staticmethod
     def create_tooltip(widget, text):
@@ -438,6 +440,8 @@ class JpVocabUI:
             self.ui_translation_validation = ""
         else:
             raise ValueError(f"Unhandled 'TranslationType': {style}")
+
+        self.total_ai_requests += 1
 
         if style == TranslationType.Translate:
             self.command_queue.put(MonitorCommand(
