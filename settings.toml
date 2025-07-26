@@ -1,7 +1,13 @@
 # This is the settings file. To override values here, create a user.toml by coping this.
 
 [ai_settings]
-# Oogabooga or Gemini or OpenAI or TabbyAPI
+# The default service selected by the dropdown
+# "Claude"
+# "Gemini"
+# "OpenAI"  # Generic OpenAI Completions, used by most services
+# "Oogabooga"  # OpenAI Completions, with Oogabooga (local) specific behavior
+# "TabbyAPI"   # OpenAI Completions, with TabbyAPI (local) specific behavior
+# "OpenAIChat"  # Generic OpenAI ChatCompletions
 api = "Oogabooga"
 
 [oobabooga_api]
@@ -12,13 +18,20 @@ preset_name = 'none'
 system_prompt = ""
 
 [tabby_api]
-request_url = ""
+request_url = "" # should end in /completions
 api_key = ""
 system_prompt = ""
 
 [openai_api]
 # supports service that implements a OpenAI-Completions endpoint
-request_url = ""
+request_url = "" # should end in /completions
+model = ""
+api_key = ""
+system_prompt = ""
+
+[openai_chat_api]
+# supports service that implements a OpenAI-ChatCompletions endpoint
+request_url = "" # should end in /chat/completions
 model = ""
 api_key = ""
 system_prompt = ""
