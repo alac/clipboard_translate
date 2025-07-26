@@ -187,29 +187,65 @@ def run_ai_request_openai_style(
         max_response: int = 2048,
         ban_eos_token: bool = True,
         print_prompt=True):
+    request_url = ""
+    system_prompt = ""
+    preset = ""
+    model = None
+    api_key = None
+    json_schema = None
+
     if api_choice == AI_SERVICE_OPENAI:
-        request_url, headers, data = prep_openai_request(
-            prompt,
-            base_model,
-            custom_stopping_strings,
-            temperature,
-            max_response)
+        request_url = settings.get_setting('openai_api.request_url')
+        system_prompt = settings.get_setting('openai_api.system_prompt')
+        model = settings.get_setting('openai_api.model')
+        if base_model:
+            json_schema = base_model.model_json_schema()
+        api_key = settings.get_setting('openai_api.api_key')
     elif api_choice == AI_SERVICE_TABBYAPI:
-        request_url, headers, data = prep_tabby_request(
-            prompt,
-            base_model,
-            custom_stopping_strings,
-            temperature,
-            max_response)
+        request_url = settings.get_setting('tabby_api.request_url')
+        system_prompt = settings.get_setting('tabby_api.system_prompt')
+        if base_model:
+            json_schema = create_strict_schema(base_model).model_json_schema()
+        api_key = settings.get_setting('tabby_api.api_key')
     elif api_choice == AI_SERVICE_OOBABOOGA:
-        request_url, headers, data = prep_oogabooga_request(
-            prompt,
-            custom_stopping_strings,
-            temperature,
-            max_response,
-            ban_eos_token)
+        request_url = settings.get_setting('oobabooga_api.request_url')
+        system_prompt = settings.get_setting('oobabooga_api.system_prompt')
+        preset = settings.get_setting('oobabooga_api.preset_name')
+        if base_model:
+            json_schema = create_strict_schema(base_model).model_json_schema()
     else:
         raise ValueError(f"Invalid service: {api_choice}")
+
+    if system_prompt:
+        prompt = system_prompt + "\n" + prompt
+    data = {
+        "prompt": prompt,
+        "echo": False,
+        "frequency_penalty": 0,
+        "logprobs": 0,
+        "max_tokens": max_response,
+        "presence_penalty": 0,
+        "stop": custom_stopping_strings,
+        "stream": True,
+        "stream_options": None,
+        "suffix": None,
+        "temperature": temperature,
+        "top_p": 1,
+        "ban_eos_token": ban_eos_token
+    }
+    if model:
+        data["model"] = model
+    if json_schema:
+        data['json_schema'] = json_schema
+    if preset.lower() not in ['', 'none']:  # yaml doesn't support None
+        data['preset'] = preset
+
+    headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+    }
+    if api_key:
+        headers['Authorization'] = f'Bearer {api_key}'
 
     http_client = create_http_client()
     response = http_client.request(
@@ -242,150 +278,6 @@ def run_ai_request_openai_style(
         except ValidationError as e:
             print(f"Unpacking Pydantic model failed. Full text:\n---\n{full_text}\n---\n")
             raise e
-
-
-def prep_openai_request(
-        prompt: str,
-        base_model: Optional[Type[BaseModel]],
-        custom_stopping_strings: Optional[list[str]] = None,
-        temperature: float = .1,
-        max_response: int = 2048):
-    request_url = settings.get_setting('openai_api.request_url')
-    system_prompt = settings.get_setting('openai_api.system_prompt')
-    if system_prompt:
-        prompt = system_prompt + "\n" + prompt
-    data = {
-        "model": settings.get_setting('openai_api.model'),
-        "prompt": prompt,
-        "echo": False,
-        "frequency_penalty": 0,
-        "logprobs": 0,
-        "max_tokens": max_response,
-        "presence_penalty": 0,
-        "stop": custom_stopping_strings,
-        "stream": True,
-        "stream_options": None,
-        "suffix": None,
-        "temperature": temperature,
-        "top_p": 1
-    }
-    if base_model:
-        data["json_schema"] = base_model.model_json_schema()
-    headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-    }
-    api_key = settings.get_setting('openai_api.api_key')
-    if api_key:
-        headers['Authorization'] = f'Bearer {api_key}'
-    return request_url, headers, data
-
-
-def prep_tabby_request(
-        prompt: str,
-        base_model: Optional[Type[BaseModel]],
-        custom_stopping_strings: Optional[list[str]] = None,
-        temperature: float = .1,
-        max_response: int = 2048):
-    request_url = settings.get_setting('tabby_api.request_url')
-    system_prompt = settings.get_setting('tabby_api.system_prompt')
-    if system_prompt:
-        prompt = system_prompt + "\n" + prompt
-
-    data = {
-        "prompt": prompt,
-        "echo": False,
-        "frequency_penalty": 0,
-        "logprobs": 0,
-        "max_tokens": max_response,
-        "presence_penalty": 0,
-        "stop": custom_stopping_strings,
-        "stream": True,
-        "stream_options": None,
-        "suffix": None,
-        "temperature": temperature,
-        "top_p": 1
-    }
-    if base_model:
-        response_schema = create_strict_schema(base_model).model_json_schema()
-        data["json_schema"] = response_schema
-    headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-    }
-    api_key = settings.get_setting('tabby_api.api_key')
-    if api_key:
-        headers['Authorization'] = f'Bearer {api_key}'
-    return request_url, headers, data
-
-
-def prep_oogabooga_request(
-        prompt: str,
-        custom_stopping_strings: Optional[list[str]] = None,
-        temperature: float = .1,
-        max_response: int = 2048,
-        ban_eos_token: bool = False):
-    request_url = settings.get_setting('oobabooga_api.request_url')
-    max_context = settings.get_setting('oobabooga_api.context_length')
-    if not custom_stopping_strings:
-        custom_stopping_strings = []
-
-    headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-    }
-    api_key = settings.get_setting_fallback('oobabooga_api.api_key', None)
-    if api_key:
-        headers['Authorization'] = f'Bearer {api_key}'
-
-    system_prompt = settings.get_setting('oobabooga_api.system_prompt')
-    if system_prompt:
-        prompt = system_prompt + "\n" + prompt
-
-    data = {
-        "prompt": prompt,
-        'temperature': temperature,
-        "max_tokens": max_response,
-        'truncation_length': max_context - max_response,
-        'stop': custom_stopping_strings,
-        'ban_eos_token': ban_eos_token,
-        "stream": True,
-    }
-    preset = settings.get_setting('oobabooga_api.preset_name')
-    if preset.lower() not in ['', 'none']:
-        data['preset'] = preset
-    else:
-        extra_settings = {
-            'min_p': 0.05,
-            'top_k': 0,
-            'repetition_penalty': 1.05,
-            'repetition_penalty_range': 1024,
-            'typical_p': 1,
-            'tfs': 1,
-            'top_a': 0,
-            'epsilon_cutoff': 0,
-            'eta_cutoff': 0,
-            'guidance_scale': 1,
-            'negative_prompt': '',
-            'penalty_alpha': 0,
-            'mirostat_mode': 0,
-            'mirostat_tau': 5,
-            'mirostat_eta': 0.1,
-            'temperature_last': False,
-            'do_sample': True,
-            'seed': -1,
-            'encoder_repetition_penalty': 1,
-            'no_repeat_ngram_size': 0,
-            'min_length': 0,
-            'num_beams': 1,
-            'length_penalty': 1,
-            'early_stopping': False,
-            'add_bos_token': False,
-            'skip_special_tokens': True,
-            'top_p': 0.98,
-        }
-        data.update(extra_settings)
-    return request_url, headers, data
 
 
 def run_ai_request_gemini_pro(
