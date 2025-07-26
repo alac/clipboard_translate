@@ -164,7 +164,7 @@ def run_vocabulary_list(sentence: str,
         return None
 
     token_stream = run_ai_request_stream(prompt,
-                                         ["</task>", "</|system|>", "</|", "<|"],
+                                         settings.get_setting('define.stopping_strings'),
                                          print_prompt=False,
                                          temperature=temp,
                                          ban_eos_token=False,
@@ -220,7 +220,7 @@ def translate_with_context(history, sentence, temp=None, style="",
             update_queue.put(UIUpdateCommand("translate", sentence, f"#{index}. "))
 
     token_stream = run_ai_request_stream(prompt,
-                                         ["</english>", "</task>", "</analysis>", "</|", "<|"],
+                                         settings.get_setting('translate.stopping_strings'),
                                          print_prompt=False,
                                          temperature=temp,
                                          ban_eos_token=False,
@@ -281,7 +281,7 @@ def translate_with_context_cot(history, sentence, temp=None,
         return None
 
     token_stream = run_ai_request_stream(prompt,
-                                         ["</english>", "</task>", "</analysis>", "</|", "</"],
+                                         settings.get_setting('translate_cot.stopping_strings'),
                                          print_prompt=False,
                                          temperature=temp,
                                          ban_eos_token=False,
@@ -352,7 +352,7 @@ def ask_question(question: str, sentence: str, history: list[str], temp: Optiona
         return None
 
     token_stream = run_ai_request_stream(prompt,
-                                         ["</answer>", "</task>", "</|", "<|"],
+                                         settings.get_setting('q_and_a.stopping_strings'),
                                          print_prompt=False,
                                          temperature=temp,
                                          ban_eos_token=False,
