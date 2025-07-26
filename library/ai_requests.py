@@ -17,16 +17,18 @@ from library.settings_manager import settings, ROOT_FOLDER
 
 AI_SERVICE_CLAUDE = "Claude"
 AI_SERVICE_GEMINI = "Gemini"
-AI_SERVICE_OOBABOOGA = "Oogabooga"
-AI_SERVICE_OPENAI = "OpenAI"
-AI_SERVICE_TABBYAPI = "TabbyAPI"
+AI_SERVICE_OPENAI = "OpenAI"  # Generic OpenAI Completions
+AI_SERVICE_OOBABOOGA = "Oogabooga"  # OpenAI Completions with Oogabooga specific behavior
+AI_SERVICE_TABBYAPI = "TabbyAPI"  # OpenAI Completions with Tabby specific behavior
+AI_SERVICE_OPENAICHAT = "OpenAIChat"  # Generic OpenAI ChatCompletions
 
 AiServiceType = Literal[
     AI_SERVICE_CLAUDE,
     AI_SERVICE_GEMINI,
-    AI_SERVICE_OOBABOOGA,
     AI_SERVICE_OPENAI,
+    AI_SERVICE_OOBABOOGA,
     AI_SERVICE_TABBYAPI,
+    AI_SERVICE_OPENAICHAT,
 ]
 
 http = urllib3.PoolManager(
@@ -142,7 +144,7 @@ def _run_ai_request_stream(
 
     if api_override:
         api_choice = api_override
-    if api_choice in [AI_SERVICE_OOBABOOGA, AI_SERVICE_OPENAI, AI_SERVICE_TABBYAPI]:
+    if api_choice in [AI_SERVICE_OPENAI, AI_SERVICE_OOBABOOGA, AI_SERVICE_TABBYAPI]:
         for tok in run_ai_request_openai_style(
                 prompt,
                 api_choice,
@@ -152,6 +154,17 @@ def _run_ai_request_stream(
                 temperature,
                 max_response,
                 ban_eos_token,
+                print_prompt):
+            yield tok
+    if api_choice in [AI_SERVICE_OPENAICHAT]:
+        for tok in run_ai_request_openai_chat_style(
+                prompt,
+                api_choice,
+                base_model,
+                structured_result_callback,
+                custom_stopping_strings,
+                temperature,
+                max_response,
                 print_prompt):
             yield tok
     elif api_choice == AI_SERVICE_GEMINI:
@@ -266,6 +279,98 @@ def run_ai_request_openai_style(
                 break
             payload = json.loads(event.data)
             new_text = payload['choices'][0]['text']
+            f.write(new_text)
+            print(new_text, end="")
+            full_text += new_text
+            yield new_text
+
+    if base_model:
+        try:
+            structured_object = base_model.model_validate_json(full_text)
+            structured_result_callback(structured_object)
+        except ValidationError as e:
+            print(f"Unpacking Pydantic model failed. Full text:\n---\n{full_text}\n---\n")
+            raise e
+
+
+def run_ai_request_openai_chat_style(
+        prompt: str,
+        api_choice: str,
+        base_model: Optional[Type[BaseModel]],
+        structured_result_callback: Callable[[Any], None],
+        custom_stopping_strings: Optional[list[str]] = None,
+        temperature: float = .1,
+        max_response: int = 2048,
+        print_prompt=True):
+    request_url = ""
+    system_prompt = ""
+    model = None
+    api_key = None
+    json_schema = None
+
+    if api_choice == AI_SERVICE_OPENAICHAT:
+        request_url = settings.get_setting('openai_chat_api.request_url')
+        system_prompt = settings.get_setting('openai_chat_api.system_prompt')
+        model = settings.get_setting('openai_chat_api.model')
+        if base_model:
+            json_schema = base_model.model_json_schema()
+        api_key = settings.get_setting('openai_chat_api.api_key')
+    else:
+        raise ValueError(f"Invalid service: {api_choice}")
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    data = {
+        "model": model,
+        "messages": messages,
+        "stream": True,
+        "temperature": temperature,
+        "max_tokens": max_response,
+        "top_p": 1,
+        "frequency_penalty": 0,
+        "presence_penalty": 0,
+        "stop": custom_stopping_strings,
+        "n": 1,
+    }
+    if json_schema:
+        data['response_format'] = {"type": "json_schema", "json_schema": json_schema}
+
+    headers = {
+        'Content-Type': 'application/json',
+    }
+    if api_key:
+        headers['Authorization'] = f'Bearer {api_key}'
+
+    http_client = create_http_client()
+    response = http_client.request(
+        "POST",
+        request_url,
+        headers=headers,
+        body=json.dumps(data),  # Encode data as JSON string
+        preload_content=False,  # Crucial for streaming
+    )
+    client = sseclient.SSEClient(response)
+
+    full_text = ""
+    if print_prompt:
+        for message in messages:
+            print(f"--- ROLE: {message['role']} ---\n{message['content']}")
+        print("--- ROLE: assistant ---")
+
+    with open(os.path.join(ROOT_FOLDER, "response.txt"), "w", encoding='utf-8') as f:
+        for event in client.events():
+            if event.data == "[DONE]":
+                break
+            payload = json.loads(event.data)
+            choice = payload['choices'][0]
+            if choice.get('finish_reason') in ['stop', 'length']:
+                break
+            new_text = choice.get('delta', {}).get('content')
+            if not new_text:
+                continue
             f.write(new_text)
             print(new_text, end="")
             full_text += new_text
