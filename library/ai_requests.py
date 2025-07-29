@@ -364,17 +364,17 @@ def run_ai_request_openai_chat_style(
         for event in client.events():
             if event.data == "[DONE]":
                 break
+            # print(event.data)
             payload = json.loads(event.data)
             choice = payload['choices'][0]
+            new_text = choice.get('delta', {}).get('content')
+            if new_text:
+                f.write(new_text)
+                print(new_text, end="")
+                full_text += new_text
+                yield new_text
             if choice.get('finish_reason') in ['stop', 'length']:
                 break
-            new_text = choice.get('delta', {}).get('content')
-            if not new_text:
-                continue
-            f.write(new_text)
-            print(new_text, end="")
-            full_text += new_text
-            yield new_text
 
     if base_model:
         try:
