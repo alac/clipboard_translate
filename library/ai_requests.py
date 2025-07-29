@@ -156,7 +156,7 @@ def _run_ai_request_stream(
                 ban_eos_token,
                 print_prompt):
             yield tok
-    if api_choice in [AI_SERVICE_OPENAICHAT]:
+    elif api_choice in [AI_SERVICE_OPENAICHAT]:
         for tok in run_ai_request_openai_chat_style(
                 prompt,
                 api_choice,
