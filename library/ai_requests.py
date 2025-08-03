@@ -1,9 +1,7 @@
-import certifi
 import google.genai as google_genai
 import json
 import logging
 import os
-import requests
 import sseclient
 import urllib3
 import certifi
@@ -17,18 +15,18 @@ from library.settings_manager import settings, ROOT_FOLDER
 
 AI_SERVICE_CLAUDE = "Claude"
 AI_SERVICE_GEMINI = "Gemini"
-AI_SERVICE_OPENAI = "OpenAI"  # Generic OpenAI Completions
-AI_SERVICE_OOBABOOGA = "Oogabooga"  # OpenAI Completions with Oogabooga specific behavior
-AI_SERVICE_TABBYAPI = "TabbyAPI"  # OpenAI Completions with Tabby specific behavior
-AI_SERVICE_OPENAICHAT = "OpenAIChat"  # Generic OpenAI ChatCompletions
+AI_SERVICE_OPENAI_1 = "openai_1"  # Generic OpenAI Completions
+AI_SERVICE_OPENAI_2 = "openai_2"
+AI_SERVICE_OPENAI_3 = "openai_3"
+AI_SERVICE_OPENAI_4 = "openai_4"
 
 AiServiceType = Literal[
     AI_SERVICE_CLAUDE,
     AI_SERVICE_GEMINI,
-    AI_SERVICE_OPENAI,
-    AI_SERVICE_OOBABOOGA,
-    AI_SERVICE_TABBYAPI,
-    AI_SERVICE_OPENAICHAT,
+    AI_SERVICE_OPENAI_1,
+    AI_SERVICE_OPENAI_2,
+    AI_SERVICE_OPENAI_3,
+    AI_SERVICE_OPENAI_4,
 ]
 
 http = urllib3.PoolManager(
@@ -144,29 +142,31 @@ def _run_ai_request_stream(
 
     if api_override:
         api_choice = api_override
-    if api_choice in [AI_SERVICE_OPENAI, AI_SERVICE_OOBABOOGA, AI_SERVICE_TABBYAPI]:
-        for tok in run_ai_request_openai_style(
-                prompt,
-                api_choice,
-                base_model,
-                structured_result_callback,
-                custom_stopping_strings,
-                temperature,
-                max_response,
-                ban_eos_token,
-                print_prompt):
-            yield tok
-    elif api_choice in [AI_SERVICE_OPENAICHAT]:
-        for tok in run_ai_request_openai_chat_style(
-                prompt,
-                api_choice,
-                base_model,
-                structured_result_callback,
-                custom_stopping_strings,
-                temperature,
-                max_response,
-                print_prompt):
-            yield tok
+    if api_choice in [AI_SERVICE_OPENAI_1, AI_SERVICE_OPENAI_2, AI_SERVICE_OPENAI_3, AI_SERVICE_OPENAI_4]:
+        is_chat_completions = settings.get_setting(api_choice + '.is_chat_completion')
+        if is_chat_completions:
+            for tok in run_ai_request_openai_chat_style(
+                    prompt,
+                    api_choice,
+                    base_model,
+                    structured_result_callback,
+                    custom_stopping_strings,
+                    temperature,
+                    max_response,
+                    print_prompt):
+                yield tok
+        else:
+            for tok in run_ai_request_openai_style(
+                    prompt,
+                    api_choice,
+                    base_model,
+                    structured_result_callback,
+                    custom_stopping_strings,
+                    temperature,
+                    max_response,
+                    ban_eos_token,
+                    print_prompt):
+                yield tok
     elif api_choice == AI_SERVICE_GEMINI:
         for chunk in run_ai_request_gemini_pro(
                 prompt,
@@ -200,34 +200,18 @@ def run_ai_request_openai_style(
         max_response: int = 2048,
         ban_eos_token: bool = True,
         print_prompt=True):
-    request_url = ""
-    system_prompt = ""
-    preset = ""
-    model = None
-    api_key = None
+    request_url = settings.get_setting(api_choice + '.request_url')
+    api_key = settings.get_setting(api_choice + '.api_key')
+    system_prompt = settings.get_setting(api_choice + '.system_prompt')
+    preset_name = settings.get_setting(api_choice + '.preset_name')
+    model = settings.get_setting(api_choice + '.model')
     json_schema = None
-
-    if api_choice == AI_SERVICE_OPENAI:
-        request_url = settings.get_setting('openai_api.request_url')
-        system_prompt = settings.get_setting('openai_api.system_prompt')
-        model = settings.get_setting('openai_api.model')
-        if base_model:
+    if base_model:
+        is_json_schema_strict = settings.get_setting(api_choice + '.is_json_schema_strict')
+        if is_json_schema_strict:
+            json_schema = create_strict_schema(base_model).model_json_schema()
+        else:
             json_schema = base_model.model_json_schema()
-        api_key = settings.get_setting('openai_api.api_key')
-    elif api_choice == AI_SERVICE_TABBYAPI:
-        request_url = settings.get_setting('tabby_api.request_url')
-        system_prompt = settings.get_setting('tabby_api.system_prompt')
-        if base_model:
-            json_schema = create_strict_schema(base_model).model_json_schema()
-        api_key = settings.get_setting('tabby_api.api_key')
-    elif api_choice == AI_SERVICE_OOBABOOGA:
-        request_url = settings.get_setting('oobabooga_api.request_url')
-        system_prompt = settings.get_setting('oobabooga_api.system_prompt')
-        preset = settings.get_setting('oobabooga_api.preset_name')
-        if base_model:
-            json_schema = create_strict_schema(base_model).model_json_schema()
-    else:
-        raise ValueError(f"Invalid service: {api_choice}")
 
     if system_prompt:
         prompt = system_prompt + "\n" + prompt
@@ -250,8 +234,8 @@ def run_ai_request_openai_style(
         data["model"] = model
     if json_schema:
         data['json_schema'] = json_schema
-    if preset.lower() not in ['', 'none']:  # yaml doesn't support None
-        data['preset'] = preset
+    if preset_name.lower() not in ['', 'none']:  # yaml doesn't support None
+        data['preset'] = preset_name
 
     headers = {
         'Content-Type': 'application/json',
@@ -302,21 +286,13 @@ def run_ai_request_openai_chat_style(
         temperature: float = .1,
         max_response: int = 2048,
         print_prompt=True):
-    request_url = ""
-    system_prompt = ""
-    model = None
-    api_key = None
+    request_url = settings.get_setting(api_choice + '.request_url')
+    api_key = settings.get_setting(api_choice + '.api_key')
+    system_prompt = settings.get_setting(api_choice + '.system_prompt')
+    model = settings.get_setting(api_choice + '.model')
     json_schema = None
-
-    if api_choice == AI_SERVICE_OPENAICHAT:
-        request_url = settings.get_setting('openai_chat_api.request_url')
-        system_prompt = settings.get_setting('openai_chat_api.system_prompt')
-        model = settings.get_setting('openai_chat_api.model')
-        if base_model:
-            json_schema = base_model.model_json_schema()
-        api_key = settings.get_setting('openai_chat_api.api_key')
-    else:
-        raise ValueError(f"Invalid service: {api_choice}")
+    if base_model:
+        json_schema = base_model.model_json_schema()
 
     messages = []
     if system_prompt:
@@ -511,6 +487,13 @@ def run_ai_request_claude(
                 print(f"Unpacking Pydantic model failed. Full text:\n---\n{full_text}\n---\n")
                 raise e
 
+    except anthropic.RateLimitError as e:
+        # The Anthropic library might also raise a specific RateLimitError
+        # Extract retry-after from headers or message if available
+        retry_after = 60  # Default fallback
+        if hasattr(e, 'response') and hasattr(e.response, 'headers'):
+            retry_after = int(e.response.headers.get("retry-after", 60))
+        raise RateLimitError(retry_after)
     except anthropic.APIStatusError as e:
         if e.status_code == 429:  # 429 is the HTTP status code for "Too Many Requests"
             # Extract retry-after header - default to 60 if not present
@@ -519,13 +502,6 @@ def run_ai_request_claude(
         else:
             # Re-raise other API errors
             raise
-    except anthropic.RateLimitError as e:
-        # The Anthropic library might also raise a specific RateLimitError
-        # Extract retry-after from headers or message if available
-        retry_after = 60  # Default fallback
-        if hasattr(e, 'response') and hasattr(e.response, 'headers'):
-            retry_after = int(e.response.headers.get("retry-after", 60))
-        raise RateLimitError(retry_after)
 
 
 def create_strict_schema(model: Type[BaseModel]) -> Type[BaseModel]:
@@ -583,7 +559,7 @@ if __name__ == "__main__":
         200,
         False,
         False,
-        AI_SERVICE_TABBYAPI)
+        AI_SERVICE_OPENAI_1)
     print(output)
 
     output = run_ai_request_structured_output(
@@ -594,7 +570,7 @@ if __name__ == "__main__":
         200,
         False,
         False,
-        AI_SERVICE_TABBYAPI)
+        AI_SERVICE_OPENAI_1)
     print(output)
 
     output = run_ai_request_structured_output(
@@ -605,7 +581,7 @@ if __name__ == "__main__":
         200,
         False,
         False,
-        AI_SERVICE_TABBYAPI)
+        AI_SERVICE_OPENAI_1)
     print(output)
 
     for token in run_ai_request_stream(
@@ -615,5 +591,5 @@ if __name__ == "__main__":
             200,
             False,
             False,
-            AI_SERVICE_TABBYAPI):
+            AI_SERVICE_OPENAI_1):
         print(token, end=None)

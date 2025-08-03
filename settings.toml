@@ -4,37 +4,60 @@
 # The default service selected by the dropdown
 # "Claude"
 # "Gemini"
-# "OpenAI"  # Generic OpenAI Completions, used by most services
-# "Oogabooga"  # OpenAI Completions, with Oogabooga (local) specific behavior
-# "TabbyAPI"   # OpenAI Completions, with TabbyAPI (local) specific behavior
-# "OpenAIChat"  # Generic OpenAI ChatCompletions
-api = "Oogabooga"
+# "openai_1" ... "openai_4"  # Generic OpenAI Completions, used by most services
+api = "openai_1"
 
-[oobabooga_api]
+
+# 'openai_#' connections are generic.
+# request_url should end in either /completions or /chat/completions
+# system_prompt is sent as a 'system message' for all requests in ChatCompletions mode
+#   For Completions, it is prefixed to all messages
+# preset_name is for oobabooga/text-generation-webui
+# is_json_schema_strict should be true for oobabooga/text-generation-webui and TabbyAPI
+
+[openai_1]
+display_name = "oobabooga"
 request_url = 'http://127.0.0.1:5000/v1/completions'
+is_chat_completion = true
 context_length = 4096
-# preset_name should be a oobabooga preset; 'none' will use the defaults hardcoded into library/ai_requests.py
+api_key = ""
+system_prompt = ""
+model = ""
 preset_name = 'none'
-system_prompt = ""
+is_json_schema_strict = false
 
-[tabby_api]
-request_url = "" # should end in /completions
+[openai_2]
+display_name = "oobabooga"
+request_url = 'http://127.0.0.1:5000/v1/completions'
+is_chat_completion = true
+context_length = 4096
 api_key = ""
 system_prompt = ""
-
-[openai_api]
-# supports service that implements a OpenAI-Completions endpoint
-request_url = "" # should end in /completions
 model = ""
-api_key = ""
-system_prompt = ""
+preset_name = 'none'
+is_json_schema_strict = false
 
-[openai_chat_api]
-# supports service that implements a OpenAI-ChatCompletions endpoint
-request_url = "" # should end in /chat/completions
-model = ""
+[openai_3]
+display_name = "oobabooga"
+request_url = 'http://127.0.0.1:5000/v1/completions'
+is_chat_completion = true
+context_length = 4096
 api_key = ""
 system_prompt = ""
+model = ""
+preset_name = 'none'
+is_json_schema_strict = false
+
+[openai_4]
+display_name = "oobabooga"
+request_url = 'http://127.0.0.1:5000/v1/completions'
+is_chat_completion = true
+context_length = 4096
+api_key = ""
+system_prompt = ""
+model = ""
+preset_name = 'none'
+is_json_schema_strict = false
 
 [gemini_pro_api]
 # You can get a free api key here: https://ai.google.dev/gemini-api/docs/api-key

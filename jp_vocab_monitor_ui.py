@@ -23,13 +23,29 @@ from ai_prompts import (should_generate_vocabulary_list, UIUpdateCommand, run_vo
                         request_interrupt_atomic_swap, ANSIColors, ask_question, is_request_ongoing)
 from library.get_dictionary_defs import get_definitions_string
 from library.settings_manager import settings
-from library.ai_requests import AI_SERVICE_GEMINI, AI_SERVICE_OOBABOOGA, AI_SERVICE_OPENAI, AI_SERVICE_CLAUDE, AI_SERVICE_TABBYAPI, AI_SERVICE_OPENAICHAT
+from library.ai_requests import (AI_SERVICE_GEMINI, AI_SERVICE_CLAUDE, AI_SERVICE_OPENAI_1, AI_SERVICE_OPENAI_2,
+                                 AI_SERVICE_OPENAI_3, AI_SERVICE_OPENAI_4)
 from library.rate_limiter import RateLimiter
 
 
 CLIPBOARD_CHECK_LATENCY_MS = 250
 UPDATE_LOOP_LATENCY_MS = 50
 FONT_SIZE_DEBOUNCE_DURATION = 200
+
+AI_SERVICES_DISPLAY_NAME = {}
+AI_SERVICES_DISPLAY_NAME_REVERSE = {}
+
+
+def populate_display_names_map():
+    AI_SERVICES_DISPLAY_NAME[AI_SERVICE_GEMINI] = AI_SERVICE_GEMINI
+    AI_SERVICES_DISPLAY_NAME_REVERSE[AI_SERVICE_GEMINI] = AI_SERVICE_GEMINI
+    AI_SERVICES_DISPLAY_NAME[AI_SERVICE_CLAUDE] = AI_SERVICE_CLAUDE
+    AI_SERVICES_DISPLAY_NAME_REVERSE[AI_SERVICE_CLAUDE] = AI_SERVICE_CLAUDE
+
+    for service_id in [AI_SERVICE_OPENAI_1, AI_SERVICE_OPENAI_2, AI_SERVICE_OPENAI_3, AI_SERVICE_OPENAI_4]:
+        display_name = settings.get_setting(service_id + ".display_name")
+        AI_SERVICES_DISPLAY_NAME[service_id] = display_name
+        AI_SERVICES_DISPLAY_NAME_REVERSE[display_name] = service_id
 
 
 logging.basicConfig(
@@ -160,9 +176,10 @@ class JpVocabUI:
             self.rate_limiter = RateLimiter(requests_per_minute=rate_limit)
 
     def on_ai_service_change(self, *_args):
-        selected_service = self.ai_service.get()
-        print(f"AI service changed to: {selected_service}")
-        logging.info(f"AI service changed to: {selected_service}")
+        ai_service_display_name = self.ai_service.get()
+        ai_service_name = self.get_true_api_service()
+        print(f"AI service changed to: {ai_service_name}({ai_service_display_name})")
+        logging.info(f"AI service changed to: {ai_service_name}({ai_service_display_name})")
 
     def start_ui(self):
         root = tk.Tk()
@@ -248,8 +265,9 @@ class JpVocabUI:
         translate_dropdown.pack(side=tk.LEFT, padx=2)
 
         # AI Service selector
+        populate_display_names_map()
         self.ai_service = tk.StringVar()
-        self.ai_service.set(settings.get_setting('ai_settings.api'))  # default value
+        self.ai_service.set(AI_SERVICES_DISPLAY_NAME[settings.get_setting('ai_settings.api')])  # default value
         self.ai_service.trace('w', self.on_ai_service_change)
         ai_label = tk.Label(right_controls, text="Service:")
         ai_label.pack(side=tk.LEFT, padx=2)
@@ -258,10 +276,10 @@ class JpVocabUI:
             self.ai_service,
             AI_SERVICE_CLAUDE,
             AI_SERVICE_GEMINI,
-            AI_SERVICE_OOBABOOGA,
-            AI_SERVICE_OPENAI,
-            AI_SERVICE_OPENAICHAT,
-            AI_SERVICE_TABBYAPI,
+            AI_SERVICES_DISPLAY_NAME[AI_SERVICE_OPENAI_1],
+            AI_SERVICES_DISPLAY_NAME[AI_SERVICE_OPENAI_2],
+            AI_SERVICES_DISPLAY_NAME[AI_SERVICE_OPENAI_3],
+            AI_SERVICES_DISPLAY_NAME[AI_SERVICE_OPENAI_4],
         )
         ai_dropdown.pack(side=tk.LEFT, padx=2)
 
@@ -343,6 +361,9 @@ class JpVocabUI:
         root.bind("<Shift-Return>", lambda e: self.ask_question())
         root.protocol("WM_DELETE_WINDOW", self.on_closing)
         root.mainloop()
+
+    def get_true_api_service(self):
+        return AI_SERVICES_DISPLAY_NAME_REVERSE[self.ai_service.get()]
 
     def on_closing(self):
         # write history on close
@@ -444,13 +465,14 @@ class JpVocabUI:
 
         self.total_ai_requests += 1
 
+        selected_api = self.get_true_api_service()
         if style == TranslationType.Translate:
             self.command_queue.put(MonitorCommand(
                 "translate",
                 self.ui_sentence,
                 self.history[:],
                 index=1,
-                api_override=self.ai_service.get()))
+                api_override=selected_api))
         elif style == TranslationType.BestOfThree:
             self.command_queue.put(MonitorCommand(
                 "translate",
@@ -458,7 +480,7 @@ class JpVocabUI:
                 self.history[:],
                 temp=settings.get_setting_fallback('translate_best_of_three.first_temperature', .7),
                 index=1,
-                api_override=self.ai_service.get()))
+                api_override=selected_api))
             self.command_queue.put(MonitorCommand(
                 "translate",
                 self.ui_sentence,
@@ -466,7 +488,7 @@ class JpVocabUI:
                 temp=settings.get_setting_fallback('translate_best_of_three.second_temperature', .7),
                 style="Aim for a literal translation.",
                 index=2,
-                api_override=self.ai_service.get()))
+                api_override=selected_api))
             self.command_queue.put(MonitorCommand(
                 "translate",
                 self.ui_sentence,
@@ -474,20 +496,20 @@ class JpVocabUI:
                 temp=settings.get_setting_fallback('translate_best_of_three.third_temperature', .7),
                 style="Aim for a natural translation.",
                 index=3,
-                api_override=self.ai_service.get()))
+                api_override=selected_api))
             if settings.get_setting_fallback('translate_best_of_three.enable_validation', False):
                 self.command_queue.put(MonitorCommand("translation_validation",
                                                       self.ui_sentence,
                                                       self.history[:],
                                                       "",
-                                                      api_override=self.ai_service.get(),
+                                                      api_override=selected_api,
                                                       update_token_key="translation_validation"))
         elif style == TranslationType.ChainOfThought:
             self.command_queue.put(MonitorCommand(
                 "translate_cot",
                 self.ui_sentence,
                 self.history[:],
-                api_override=self.ai_service.get(),
+                api_override=selected_api,
                 update_token_key="translate"
             ))
         elif style == TranslationType.TranslateAndChainOfThought:
@@ -495,19 +517,19 @@ class JpVocabUI:
                 "translate",
                 self.ui_sentence,
                 self.history[:],
-                api_override=self.ai_service.get()))
+                api_override=selected_api))
             self.command_queue.put(MonitorCommand(
                 "translate_cot",
                 self.ui_sentence,
                 self.history[:],
-                api_override=self.ai_service.get(),
+                api_override=selected_api,
                 update_token_key="translation_validation"))
         elif style == TranslationType.Define:
             self.command_queue.put(MonitorCommand(
                 "define",
                 self.ui_sentence,
                 [],
-                api_override=self.ai_service.get()))
+                api_override=selected_api))
         elif style == TranslationType.DefineWithoutAI:
             self.ui_definitions = get_definitions_string(self.ui_sentence)
         elif style == TranslationType.DefineAndChainOfThought:
@@ -515,7 +537,7 @@ class JpVocabUI:
                 "translate_cot",
                 self.ui_sentence,
                 self.history[:],
-                api_override=self.ai_service.get(),
+                api_override=selected_api,
                 update_token_key="translation_validation",
                 include_readings=True))
         else:
@@ -548,7 +570,7 @@ class JpVocabUI:
         self.ui_response = ""
         self.show_qanda = True
         self.command_queue.put(MonitorCommand("qanda", self.ui_sentence, self.history[:], self.ui_question,
-                                              temp=0, api_override=self.ai_service.get()))
+                                              temp=0, api_override=self.get_true_api_service()))
 
     def play_tts(self):
         self.command_queue.put(MonitorCommand("tts", self.ui_sentence, self.history[:]))
