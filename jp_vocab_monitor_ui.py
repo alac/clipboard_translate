@@ -23,29 +23,15 @@ from ai_prompts import (should_generate_vocabulary_list, UIUpdateCommand, run_vo
                         request_interrupt_atomic_swap, ANSIColors, ask_question, is_request_ongoing)
 from library.get_dictionary_defs import get_definitions_string
 from library.settings_manager import settings
-from library.ai_requests import (AI_SERVICE_GEMINI, AI_SERVICE_CLAUDE, AI_SERVICE_OPENAI_1, AI_SERVICE_OPENAI_2,
-                                 AI_SERVICE_OPENAI_3, AI_SERVICE_OPENAI_4)
+from library.ai_requests import (ai_services_display_names_map, ai_services_display_names_reverse_map, AI_SERVICE_GEMINI,
+                                 AI_SERVICE_CLAUDE, AI_SERVICE_OPENAI_1, AI_SERVICE_OPENAI_2, AI_SERVICE_OPENAI_3,
+                                 AI_SERVICE_OPENAI_4)
 from library.rate_limiter import RateLimiter
 
 
 CLIPBOARD_CHECK_LATENCY_MS = 250
 UPDATE_LOOP_LATENCY_MS = 50
 FONT_SIZE_DEBOUNCE_DURATION = 200
-
-AI_SERVICES_DISPLAY_NAME = {}
-AI_SERVICES_DISPLAY_NAME_REVERSE = {}
-
-
-def populate_display_names_map():
-    AI_SERVICES_DISPLAY_NAME[AI_SERVICE_GEMINI] = AI_SERVICE_GEMINI
-    AI_SERVICES_DISPLAY_NAME_REVERSE[AI_SERVICE_GEMINI] = AI_SERVICE_GEMINI
-    AI_SERVICES_DISPLAY_NAME[AI_SERVICE_CLAUDE] = AI_SERVICE_CLAUDE
-    AI_SERVICES_DISPLAY_NAME_REVERSE[AI_SERVICE_CLAUDE] = AI_SERVICE_CLAUDE
-
-    for service_id in [AI_SERVICE_OPENAI_1, AI_SERVICE_OPENAI_2, AI_SERVICE_OPENAI_3, AI_SERVICE_OPENAI_4]:
-        display_name = settings.get_setting(service_id + ".display_name")
-        AI_SERVICES_DISPLAY_NAME[service_id] = display_name
-        AI_SERVICES_DISPLAY_NAME_REVERSE[display_name] = service_id
 
 
 logging.basicConfig(
@@ -265,9 +251,8 @@ class JpVocabUI:
         translate_dropdown.pack(side=tk.LEFT, padx=2)
 
         # AI Service selector
-        populate_display_names_map()
         self.ai_service = tk.StringVar()
-        self.ai_service.set(AI_SERVICES_DISPLAY_NAME[settings.get_setting('ai_settings.api')])  # default value
+        self.ai_service.set(ai_services_display_names_map()[settings.get_setting('ai_settings.api')])  # default value
         self.ai_service.trace('w', self.on_ai_service_change)
         ai_label = tk.Label(right_controls, text="Service:")
         ai_label.pack(side=tk.LEFT, padx=2)
@@ -276,10 +261,10 @@ class JpVocabUI:
             self.ai_service,
             AI_SERVICE_CLAUDE,
             AI_SERVICE_GEMINI,
-            AI_SERVICES_DISPLAY_NAME[AI_SERVICE_OPENAI_1],
-            AI_SERVICES_DISPLAY_NAME[AI_SERVICE_OPENAI_2],
-            AI_SERVICES_DISPLAY_NAME[AI_SERVICE_OPENAI_3],
-            AI_SERVICES_DISPLAY_NAME[AI_SERVICE_OPENAI_4],
+            ai_services_display_names_map()[AI_SERVICE_OPENAI_1],
+            ai_services_display_names_map()[AI_SERVICE_OPENAI_2],
+            ai_services_display_names_map()[AI_SERVICE_OPENAI_3],
+            ai_services_display_names_map()[AI_SERVICE_OPENAI_4],
         )
         ai_dropdown.pack(side=tk.LEFT, padx=2)
 
@@ -363,7 +348,7 @@ class JpVocabUI:
         root.mainloop()
 
     def get_true_api_service(self):
-        return AI_SERVICES_DISPLAY_NAME_REVERSE[self.ai_service.get()]
+        return ai_services_display_names_reverse_map()[self.ai_service.get()]
 
     def on_closing(self):
         # write history on close

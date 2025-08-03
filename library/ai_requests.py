@@ -29,6 +29,34 @@ AiServiceType = Literal[
     AI_SERVICE_OPENAI_4,
 ]
 
+AI_SERVICES_DISPLAY_NAME = {}
+AI_SERVICES_DISPLAY_NAME_REVERSE = {}
+
+
+def _populate_display_names_map():
+    AI_SERVICES_DISPLAY_NAME[AI_SERVICE_GEMINI] = AI_SERVICE_GEMINI
+    AI_SERVICES_DISPLAY_NAME_REVERSE[AI_SERVICE_GEMINI] = AI_SERVICE_GEMINI
+    AI_SERVICES_DISPLAY_NAME[AI_SERVICE_CLAUDE] = AI_SERVICE_CLAUDE
+    AI_SERVICES_DISPLAY_NAME_REVERSE[AI_SERVICE_CLAUDE] = AI_SERVICE_CLAUDE
+
+    for service_id in [AI_SERVICE_OPENAI_1, AI_SERVICE_OPENAI_2, AI_SERVICE_OPENAI_3, AI_SERVICE_OPENAI_4]:
+        display_name = settings.get_setting(service_id + ".display_name")
+        AI_SERVICES_DISPLAY_NAME[service_id] = display_name
+        AI_SERVICES_DISPLAY_NAME_REVERSE[display_name] = service_id
+
+
+def ai_services_display_names_map():
+    if len(AI_SERVICES_DISPLAY_NAME.items()) == 0:
+        _populate_display_names_map()
+    return AI_SERVICES_DISPLAY_NAME
+
+
+def ai_services_display_names_reverse_map():
+    if len(AI_SERVICES_DISPLAY_NAME.items()) == 0:
+        _populate_display_names_map()
+    return AI_SERVICES_DISPLAY_NAME_REVERSE
+
+
 http = urllib3.PoolManager(
     cert_reqs="CERT_REQUIRED",
     ca_certs=certifi.where()
