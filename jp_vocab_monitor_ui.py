@@ -5,7 +5,6 @@ from tkinter.scrolledtext import ScrolledText
 from typing import List, Tuple
 from typing import Optional
 import argparse
-import azure.cognitiveservices.speech as speechsdk
 import json
 import logging
 import math
@@ -19,7 +18,7 @@ import tkinter as tk
 import datetime
 
 from ai_prompts import (should_generate_vocabulary_list, UIUpdateCommand, run_vocabulary_list,
-                        translate_with_context, translate_with_context_cot,
+                        translate_with_context, translate_with_context_cot, generate_tts,
                         request_interrupt_atomic_swap, ANSIColors, ask_question, is_request_ongoing)
 from library.get_dictionary_defs import get_definitions_string
 from library.settings_manager import settings
@@ -28,6 +27,8 @@ from library.ai_requests import (ai_services_display_names_map, ai_services_disp
                                  AI_SERVICE_OPENAI_4)
 from library.rate_limiter import RateLimiter
 
+from jp_vocab_monitor import HistoryState, MonitorCommand, add_previous_lines_to_seen_lines, \
+    undo_repetition, InvalidTranslationTypeException, TranslationType
 
 CLIPBOARD_CHECK_LATENCY_MS = 250
 UPDATE_LOOP_LATENCY_MS = 50
@@ -44,47 +45,6 @@ logging.basicConfig(
 )
 
 
-class TranslationType(str, Enum):
-    Off = 'Off'
-    Translate = 'Translate'
-    BestOfThree = 'Best of Three'
-    ChainOfThought = 'With Analysis (CoT)'
-    TranslateAndChainOfThought = 'Post-Hoc Analysis'
-    Define = 'Define'
-    DefineWithoutAI = 'Define (without AI)'
-    DefineAndChainOfThought = 'Define->Analysis'
-
-
-class InvalidTranslationTypeException(Exception):
-    pass
-
-
-class MonitorCommand:
-    def __init__(self, command_type: str, sentence: str, history: list[str], prompt: str = None,
-                 temp: Optional[float] = None, style: str = None, index: int = 0, api_override: Optional[str] = None,
-                 update_token_key: Optional[str] = None, include_readings: bool = False):
-        self.command_type = command_type
-        self.sentence = sentence
-        self.history = history
-        self.prompt = prompt
-        self.temp = temp
-        self.style = style
-        self.index = index
-        self.api_override = api_override
-        self.update_token_key = update_token_key
-        self.include_readings = include_readings
-
-
-class HistoryState:
-    def __init__(self, sentence, translation, translation_validation, definitions, question, response,
-                 history):
-        self.ui_sentence = sentence
-        self.ui_translation = translation
-        self.ui_translation_validation = translation_validation
-        self.ui_definitions = definitions
-        self.ui_question = question
-        self.ui_response = response
-        self.history = history
 
 
 class JpVocabUI:
@@ -867,102 +827,6 @@ class JpVocabUI:
             self.text_output_scrolled_text.delete("1.0", tk.END)  # Clear current contents.
             self.text_output_scrolled_text.insert(tk.INSERT, textfield_value)
             self.last_textfield_value = textfield_value
-
-
-def undo_repetition(text: str) -> str:
-    text, name_tag = fix_name_repetition(text)
-
-    groups: List[Tuple[str, int]] = []
-    current_char = None
-    current_count = 0
-
-    for char in text:
-        if char != current_char:
-            if current_char is not None:
-                groups.append((current_char, current_count))
-            current_char = char
-            current_count = 1
-        else:
-            current_count += 1
-    if current_char is not None:
-        groups.append((current_char, current_count))
-
-    counts = [count for _, count in groups]
-    if not counts:
-        return name_tag + text
-    most_common_count = Counter(counts).most_common(1)[0][0]
-
-    result = []
-    for char, count in groups:
-        repetitions = math.ceil(count / most_common_count)
-        result.append(char * repetitions)
-
-    return name_tag + ''.join(result)
-
-
-def fix_name_repetition(text: str) -> tuple[str, str]:
-    """
-    Fixes repeated name tags in Japanese text. Assumes name tags are bracketed (like 【瑞流】)
-    """
-    if text.count('】') <= 1:
-        return text, ""
-
-    start_idx = text.find('【')
-    if start_idx == -1:
-        return text, ""
-
-    end_idx = text.find('】', start_idx)
-    if end_idx == -1:
-        return text, ""
-
-    name_tag = text[start_idx:end_idx + 1]
-    cleaned_text = text.replace(name_tag, '')
-    return cleaned_text, name_tag
-
-
-def generate_tts(sentence):
-    speech_config = speechsdk.SpeechConfig(subscription=settings.get_setting('azure_tts.speech_key'),
-                                           region=settings.get_setting('azure_tts.speech_region'))
-    audio_config = speechsdk.audio.AudioOutputConfig(use_default_speaker=True)
-    speech_config.speech_synthesis_voice_name = settings.get_setting('azure_tts.speech_voice')
-
-    speech_synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
-    speech_synthesis_result = speech_synthesizer.speak_text_async(sentence).get()
-
-    if speech_synthesis_result.reason == speechsdk.ResultReason.Canceled:
-        cancellation_details = speech_synthesis_result.cancellation_details
-        logging.error("Speech synthesis canceled: {}".format(cancellation_details.reason))
-        if cancellation_details.reason == speechsdk.CancellationReason.Error:
-            if cancellation_details.error_details:
-                logging.error("Error details: {}".format(cancellation_details.error_details))
-                logging.error("Did you set the azure_tts speech resource key and region values?")
-
-
-def add_previous_lines_to_seen_lines(seen_lines: set, output_folder: str):
-    """
-    Scans all .txt files in the output folder and its subfolders for 'Previous lines:'
-    sections and adds those lines to the seen_lines set.
-    """
-    for root, _, files in os.walk(output_folder):
-        for file in files:
-            if not file.endswith('.txt'):
-                continue
-            file_path = os.path.join(root, file)
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                if 'Previous lines:' in content:
-                    previous_section = content.split('Previous lines:')[1]
-                    if '\n\nInput:' in previous_section:
-                        previous_section = previous_section.split('\n\nInput:')[0]
-                    for line in previous_section.strip().split('\n'):
-                        if line.startswith('- '):
-                            seen_lines.add(line[2:].strip())
-                    sys.stdout.write('\r' + ' ' * 80 + '\r')
-                    sys.stdout.write(f"Loading lines from {output_folder}: {len(seen_lines)}")
-                    sys.stdout.flush()
-            except Exception as e:
-                print(f"Error processing file {file_path}: {str(e)}")
 
 
 if __name__ == '__main__':

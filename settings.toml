@@ -144,6 +144,7 @@ stopping_strings = ["</answer>", "</task>", "</|", "<|"]
 translate_button_action = 'Translate'
 analyze_button_action = 'With Analysis (CoT)'
 define_button_action = 'Define'
+auto_action = 'Translate'
 
 [general]
 # The number of previous clipboard values to send to the AI as context.

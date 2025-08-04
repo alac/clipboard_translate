@@ -4,6 +4,7 @@ from queue import SimpleQueue
 from string import Template
 from typing import Optional, Iterator
 from threading import Lock
+import azure.cognitiveservices.speech as speechsdk
 import os
 import datetime
 import logging
@@ -367,3 +368,21 @@ def read_file_or_throw(filepath: str) -> str:
         raise FileNotFoundError(f"File not found: {filepath}")
     with open(file_to_load, 'r', encoding='utf-8') as f:
         return f.read()
+
+
+def generate_tts(sentence):
+    speech_config = speechsdk.SpeechConfig(subscription=settings.get_setting('azure_tts.speech_key'),
+                                           region=settings.get_setting('azure_tts.speech_region'))
+    audio_config = speechsdk.audio.AudioOutputConfig(use_default_speaker=True)
+    speech_config.speech_synthesis_voice_name = settings.get_setting('azure_tts.speech_voice')
+
+    speech_synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
+    speech_synthesis_result = speech_synthesizer.speak_text_async(sentence).get()
+
+    if speech_synthesis_result.reason == speechsdk.ResultReason.Canceled:
+        cancellation_details = speech_synthesis_result.cancellation_details
+        logging.error("Speech synthesis canceled: {}".format(cancellation_details.reason))
+        if cancellation_details.reason == speechsdk.CancellationReason.Error:
+            if cancellation_details.error_details:
+                logging.error("Error details: {}".format(cancellation_details.error_details))
+                logging.error("Did you set the azure_tts speech resource key and region values?")
