@@ -209,4 +209,4 @@ if __name__ == '__main__':
         settings.override_settings(source_settings_path)
 
     app.state.source_tag = args.source
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=0)  # port 0 picks a free port
