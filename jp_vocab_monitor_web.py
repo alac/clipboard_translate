@@ -118,6 +118,24 @@ async def websocket_endpoint(websocket: WebSocket):
 
 # --- REST API Endpoints ---
 
+@app.post("/api/action/ask")
+async def ask_a_question(request: QuestionRequest):
+    api_service = service.ai_service_name
+    service.trigger_question(request.question, api_service)
+    return {"status": "queued"}
+
+
+@app.post("/api/action/translate_style/{style}")
+async def trigger_translation_style(style: str, request: ConfigRequest):
+    try:
+        # The frontend sends the display name, but the service needs the internal ID
+        internal_api_id = ai_services_display_names_reverse_map()[request.value]
+        service.perform_translation_by_style_str(style, internal_api_id)
+        return {"status": "queued"}
+    except (InvalidTranslationTypeException, ValueError, KeyError):
+        return {"error": f"Invalid translation style or API service: {style}, {request.value}"}
+
+
 @app.post("/api/action/{action_name}")
 async def trigger_action(action_name: str):
     if action_name == "previous":
@@ -135,24 +153,6 @@ async def trigger_action(action_name: str):
     else:
         return {"error": "Invalid action"}
     return service.get_state()
-
-
-@app.post("/api/action/translate_style/{style}")
-async def trigger_translation_style(style: str, request: ConfigRequest):
-    try:
-        # The frontend sends the display name, but the service needs the internal ID
-        internal_api_id = ai_services_display_names_reverse_map()[request.value]
-        service.perform_translation_by_style_str(style, internal_api_id)
-        return {"status": "queued"}
-    except (InvalidTranslationTypeException, ValueError, KeyError):
-        return {"error": f"Invalid translation style or API service: {style}, {request.value}"}
-
-
-@app.post("/api/action/ask")
-async def ask_a_question(request: QuestionRequest):
-    api_service = service.ai_service_name
-    service.trigger_question(request.question, api_service)
-    return {"status": "queued"}
 
 
 @app.get("/api/history", response_model=HistoryRequest)
