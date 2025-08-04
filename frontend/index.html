@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jp Vocab Monitor</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background-color: #f0f2f5; display: flex; flex-direction: column; height: 100vh; }
+        .main-container { display: flex; flex-direction: column; flex-grow: 1; padding: 8px; gap: 8px; }
+        .menu-bar { display: flex; justify-content: space-between; align-items: center; background-color: #fff; padding: 4px 8px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .button-group { display: flex; gap: 4px; align-items: center; }
+        .button-group button, .button-group select, .button-group input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; background-color: #f8f9fa; cursor: pointer; }
+        .button-group button:hover { background-color: #e9ecef; }
+        .button-group label { font-size: 0.9em; color: #555; }
+        .output-area { flex-grow: 1; border: 1px solid #ccc; border-radius: 6px; padding: 12px; font-size: 16px; white-space: pre-wrap; overflow-y: auto; background-color: #fff; line-height: 1.6; }
+        .modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; }
+        .modal-content { background-color: #fff; padding: 20px; border-radius: 8px; width: 80%; max-width: 600px; display: flex; flex-direction: column; gap: 10px; }
+        .modal-content h2 { margin: 0; }
+        .modal-content textarea { height: 300px; width: 100%; box-sizing: border-box; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div class="main-container">
+    <!-- Row 1 Menu Bar -->
+    <div class="menu-bar">
+        <div class="button-group">
+            <button id="btn-prev">⬅️</button>
+            <button id="btn-next">➡️</button>
+            <button id="btn-stop">⏹️</button>
+            <button id="btn-retry">🔁</button>
+            <button id="btn-tts">🔊</button>
+        </div>
+        <div class="button-group">
+            <label for="select-auto-action">Auto-action:</label>
+            <select id="select-auto-action">
+                <option value="Off">Off</option>
+                <option value="Translate">Translate</option>
+                <option value="Best of Three">Best of Three</option>
+                <option value="With Analysis (CoT)">With Analysis (CoT)</option>
+                <option value="Post-Hoc Analysis">Post-Hoc Analysis</option>
+                <option value="Define">Define</option>
+                <option value="Define (without AI)">Define (without AI)</option>
+                <option value="Define->Analysis">Define->Analysis</option>
+            </select>
+            <label for="select-ai-service">Service:</label>
+            <select id="select-ai-service">
+                <!-- Options will be populated by settings, add some defaults -->
+                <option>Claude</option>
+                <option>Gemini</option>
+            </select>
+            <button id="btn-history">📋</button>
+        </div>
+    </div>
+
+    <!-- Row 2 Menu Bar -->
+    <div class="menu-bar">
+        <div class="button-group">
+            <button id="btn-translate">Translate</button>
+            <button id="btn-analyze">Analyze</button>
+            <button id="btn-define">📚</button>
+            <button id="btn-ask">❓</button>
+            <button id="btn-switch-view">🔀</button>
+        </div>
+        <div class="button-group">
+             <!-- Font size can be handled purely on the frontend -->
+            <label for="spin-font-size">Font:</label>
+            <input id="spin-font-size" type="number" value="16" min="8" max="72" style="width: 50px;">
+        </div>
+    </div>
+
+    <!-- Main Output Area -->
+    <div id="output-area" class="output-area" contenteditable="true">Connecting to server...</div>
+</div>
+
+<!-- History Modal -->
+<div id="history-modal" class="modal-backdrop hidden">
+    <div class="modal-content">
+        <h2>Translation History</h2>
+        <textarea id="history-textarea"></textarea>
+        <div class="button-group">
+            <button id="btn-history-save">Save</button>
+            <button id="btn-history-cancel">Cancel</button>
+        </div>
+    </div>
+</div>
+
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- DOM Elements ---
+        const outputArea = document.getElementById('output-area');
+        const historyModal = document.getElementById('history-modal');
+        const historyTextarea = document.getElementById('history-textarea');
+        const aiServiceSelect = document.getElementById('select-ai-service');
+        const autoActionSelect = document.getElementById('select-auto-action');
+        const fontSizeInput = document.getElementById('spin-font-size');
+
+        // --- Application State ---
+        let state = {
+            sentence: '',
+            translation: '',
+            translation_validation: '',
+            definitions: '',
+            question: '',
+            response: '',
+            show_qanda: false
+        };
+
+        // --- API Helper ---
+        const api = {
+            post: async (endpoint, body) => {
+                try {
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    return await response.json();
+                } catch (error) {
+                    console.error(`Error posting to ${endpoint}:`, error);
+                }
+            },
+            get: async (endpoint) => {
+                 try {
+                    const response = await fetch(endpoint);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    return await response.json();
+                } catch (error) {
+                    console.error(`Error getting from ${endpoint}:`, error);
+                }
+            }
+        };
+
+        // --- UI Rendering ---
+        const render = () => {
+            let textContent;
+            if (state.show_qanda) {
+                textContent = `${state.question.trim()}\n\n${state.response}`;
+            } else {
+                textContent = [state.sentence, state.translation, state.definitions, state.translation_validation]
+                    .map(s => s.trim()).filter(Boolean).join('\n\n');
+            }
+            // Only update if content has changed to avoid losing cursor position
+            if (outputArea.innerText !== textContent) {
+                outputArea.innerText = textContent;
+            }
+        };
+
+        const updateState = (newState) => {
+            state = { ...state, ...newState };
+            render();
+        };
+
+        // --- WebSocket Connection ---
+        const setupWebSocket = () => {
+            const socket = new WebSocket(`ws://${window.location.host}/ws`);
+
+            socket.onopen = () => { console.log('WebSocket connected'); };
+            socket.onclose = () => {
+                console.log('WebSocket disconnected. Reconnecting in 3 seconds...');
+                setTimeout(setupWebSocket, 3000);
+            };
+            socket.onerror = (error) => { console.error('WebSocket error:', error); socket.close(); };
+
+            socket.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                if (message.event === 'STATE_UPDATE') {
+                    updateState(message.payload);
+                } else if (message.event === 'TOKEN_UPDATE') {
+                    const { update_type, sentence: update_sentence, token } = message.payload;
+                    if (update_sentence === state.sentence) {
+                        const newState = { ...state };
+                        if (update_type === 'translate') newState.translation += token;
+                        else if (update_type === 'translation_validation') newState.translation_validation += token;
+                        else if (update_type === 'define') newState.definitions += token;
+                        else if (update_type === 'qanda') newState.response += token;
+                        updateState(newState);
+                    }
+                }
+            };
+        };
+
+        // --- Event Listeners ---
+        document.getElementById('btn-prev').onclick = async () => updateState(await api.post('/api/action/previous'));
+        document.getElementById('btn-next').onclick = async () => updateState(await api.post('/api/action/next'));
+        document.getElementById('btn-retry').onclick = async () => updateState(await api.post('/api/action/retry'));
+        document.getElementById('btn-stop').onclick = () => api.post('/api/action/stop');
+        document.getElementById('btn-tts').onclick = () => api.post('/api/action/tts');
+        document.getElementById('btn-switch-view').onclick = async () => updateState(await api.post('/api/action/switch_view'));
+
+        // Action buttons that require the current AI service
+        const getSelectedApiService = () => {
+            // A map might be needed if display names differ from API names
+            return aiServiceSelect.value;
+        };
+
+        document.getElementById('btn-translate').onclick = () => api.post('/api/action/translate_style/Translate', { value: getSelectedApiService() });
+        document.getElementById('btn-analyze').onclick = () => api.post('/api/action/translate_style/With Analysis (CoT)', { value: getSelectedApiService() });
+        document.getElementById('btn-define').onclick = () => api.post('/api/action/translate_style/Define', { value: getSelectedApiService() });
+
+        document.getElementById('btn-ask').onclick = () => {
+            const questionText = outputArea.innerText;
+            api.post('/api/action/ask', { question: questionText });
+        };
+        
+        // Config selectors
+        aiServiceSelect.onchange = () => api.post('/api/config/ai_service', { value: getSelectedApiService() });
+        autoActionSelect.onchange = () => api.post('/api/config/auto_action', { value: autoActionSelect.value });
+
+        // Font size
+        fontSizeInput.onchange = () => {
+            outputArea.style.fontSize = `${fontSizeInput.value}px`;
+        };
+        
+        // History Modal
+        document.getElementById('btn-history').onclick = async () => {
+            const data = await api.get('/api/history');
+            historyTextarea.value = data.history.join('\n');
+            historyModal.classList.remove('hidden');
+        };
+        document.getElementById('btn-history-save').onclick = async () => {
+            const newHistory = historyTextarea.value.split('\n').map(line => line.trim()).filter(Boolean);
+            await api.post('/api/history', { history: newHistory });
+            historyModal.classList.add('hidden');
+        };
+        document.getElementById('btn-history-cancel').onclick = () => {
+            historyModal.classList.add('hidden');
+        };
+
+        // --- Initial Setup ---
+        setupWebSocket();
+    });
+</script>
+
+</body>
+</html>

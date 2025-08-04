@@ -411,6 +411,8 @@ class VocabMonitorService:
             self.history.append(sentence)
         self.history = self.history[-self.history_length:]
 
+        self.ui_update_queue.put(UIUpdateCommand("NEW_SENTENCE", self.ui_sentence, ""))
+
         self.history_states.append(
             HistoryState(self.ui_sentence, self.ui_translation, self.ui_translation_validation,
                          self.ui_definitions, self.ui_question, self.ui_response, self.history[:])

@@ -13,3 +13,7 @@ jaconv
 pydantic
 certifi
 anthropic
+fastapi
+uvicorn
+python-multipart
+websockets
