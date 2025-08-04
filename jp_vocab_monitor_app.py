@@ -59,8 +59,8 @@ class JpVocabUI:
 
         # Button definitions with emojis and tooltips
         buttons_config = [
-            {"text": "⬅️", "command": self.service.go_to_previous, "tooltip": "Previous Entry"},
-            {"text": "➡️", "command": self.service.go_to_next, "tooltip": "Next Entry"},
+            {"text": "⬅️", "command": self.go_to_previous, "tooltip": "Previous Entry"},
+            {"text": "➡️", "command": self.go_to_next, "tooltip": "Next Entry"},
             {"text": "⏹️", "command": self.service.stop, "tooltip": "Interrupt AI Request"},
             {"text": "🔁", "command": self.service.retry, "tooltip": "Retry"},
             {"text": "🔊", "command": self.service.trigger_tts, "tooltip": "Listen"},
@@ -166,6 +166,18 @@ class JpVocabUI:
         """Helper to get the true API service name from the display name."""
         return ai_services_display_names_reverse_map()[self.ai_service.get()]
 
+    def go_to_previous(self):
+        self.service.go_to_previous()
+        current_state = self.service.get_state()
+        self._update_text_area(current_state)
+        # self.service._debug_dump_history()
+
+    def go_to_next(self):
+        self.service.go_to_next()
+        current_state = self.service.get_state()
+        self._update_text_area(current_state)
+        # self.service._debug_dump_history()
+
     def trigger_basic_translation(self):
         try:
             style = settings.get_setting_fallback('ui.translate_button_action', TranslationType.Translate.value)
@@ -242,6 +254,7 @@ class JpVocabUI:
     def create_tooltip(widget, text):
         # This is a static helper method, so it can stay here.
         tooltip = None
+
         def show_tooltip(event):
             nonlocal tooltip
             x, y, _, _ = widget.bbox("insert")
@@ -251,7 +264,12 @@ class JpVocabUI:
             tooltip = tk.Toplevel(widget)
             tooltip.wm_overrideredirect(True)
             tooltip.wm_geometry(f"+{x}+{y}")
-            label = tk.Label(tooltip, text=text, background="#ffffe0", relief="solid", borderwidth=1, font=("TkDefaultFont", 10))
+            label = tk.Label(tooltip,
+                             text=text,
+                             background="#ffffe0",
+                             relief="solid",
+                             borderwidth=1,
+                             font=("TkDefaultFont", 10))
             label.pack(ipadx=1)
 
         def hide_tooltip(event):
@@ -265,7 +283,7 @@ class JpVocabUI:
 
     def start_ui_loop(self):
         """Starts the Tkinter main loop and the UI update loop."""
-        self.setup_ui() # Actually build the widgets
+        self.setup_ui()  # Actually build the widgets
         self.tk_root.after(UPDATE_LOOP_LATENCY_MS, self._update_loop)
         self.tk_root.mainloop()
 
@@ -277,7 +295,7 @@ class JpVocabUI:
                 update_command = self.service.ui_update_queue.get(False)
                 self.service.apply_update(update_command)
         except Empty:
-            pass # No more updates in the queue
+            pass  # No more updates in the queue
 
         # 2. Get the latest complete state from the service
         current_state = self.service.get_state()
@@ -298,10 +316,8 @@ class JpVocabUI:
 
         if self.last_textfield_value != textfield_value:
             self.last_textfield_value = textfield_value
-            # Check if focus is on the text field before updating, to avoid weirdness while typing
-            if self.tk_root.focus_get() != self.text_output_scrolled_text:
-                self.text_output_scrolled_text.delete("1.0", tk.END)
-                self.text_output_scrolled_text.insert(tk.INSERT, textfield_value.strip())
+            self.text_output_scrolled_text.delete("1.0", tk.END)
+            self.text_output_scrolled_text.insert(tk.INSERT, textfield_value.strip())
 
     # --- UI-Specific Action Handlers ---
 

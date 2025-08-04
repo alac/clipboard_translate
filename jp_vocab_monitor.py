@@ -132,6 +132,18 @@ class VocabMonitorService:
         clipboard_thread.daemon = True
         clipboard_thread.start()
 
+    def _debug_dump_history(self):
+        print("Current State:\n")
+        print(self.get_state())
+        print("\n____________\n")
+
+        for i, history_state in enumerate(self.history_states):
+            print(f"#{i} History:\n")
+            print(self.history_states[i].__dict__)
+            print("\n____________\n")
+
+        print(f"Total History {len(self.history_states)}, Current Index {self.history_states_index}")
+
     def get_state(self) -> dict:
         """Returns the current display state for the UI to render."""
         return {
@@ -309,7 +321,7 @@ class VocabMonitorService:
     # --- Internal Logic & Threading ---
 
     def _save_current_history_state(self):
-        if self.history_states_index >= 0 and self.history_states_index < len(self.history_states):
+        if self.history_states_index >= 0 and self.history_states_index <= len(self.history_states):
             self.history_states[self.history_states_index] = HistoryState(
                 self.ui_sentence, self.ui_translation, self.ui_translation_validation,
                 self.ui_definitions, self.ui_question, self.ui_response, self.history[:]

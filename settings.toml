@@ -134,6 +134,7 @@ stopping_strings = ["</answer>", "</task>", "</|", "<|"]
 
 [ui]
 # You can set the behavior of the translate, analyze and define buttons.
+# 'Off' just AI translates the sentence
 # 'Translate' just AI translates the sentence
 # 'Best of Three' does 3 separate AI translations and optionally asks which is the best.
 # 'With Analysis (CoT)' asks clarification questions before asking for a translations.
@@ -144,7 +145,7 @@ stopping_strings = ["</answer>", "</task>", "</|", "<|"]
 translate_button_action = 'Translate'
 analyze_button_action = 'With Analysis (CoT)'
 define_button_action = 'Define'
-auto_action = 'Translate'
+auto_action = 'Off'
 
 [general]
 # The number of previous clipboard values to send to the AI as context.
