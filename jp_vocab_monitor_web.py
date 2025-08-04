@@ -4,14 +4,15 @@ import json
 import logging
 import os
 from queue import Empty
-from typing import List, Set
+from typing import List, Set, Dict
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from jp_vocab_monitor import VocabMonitorService, TranslationType, InvalidTranslationTypeException, UIUpdateCommand
+from jp_vocab_monitor import VocabMonitorService, InvalidTranslationTypeException, UIUpdateCommand
+from library.ai_requests import ai_services_display_names_map, ai_services_display_names_reverse_map
 from library.settings_manager import settings
 
 # --- Setup Logging ---
@@ -57,10 +58,6 @@ manager = ConnectionManager()
 
 # --- Background Task: The Corrected Polling Adapter ---
 async def queue_poller():
-    """
-    Polls the service's queue and correctly updates both the service's
-    internal state and all connected WebSocket clients.
-    """
     loop = asyncio.get_event_loop()
     while True:
         try:
@@ -68,20 +65,14 @@ async def queue_poller():
             if not update_command:
                 continue
 
-            # Check for the special event indicating a new sentence from the clipboard monitor
             if update_command.update_type == "NEW_SENTENCE":
-                # The service state is already reset, just notify clients.
                 message = {
                     "event": "STATE_UPDATE",
                     "payload": service.get_state()
                 }
                 await manager.broadcast(json.dumps(message))
             else:
-                # This is a regular token update.
-                # 1. Apply the update to the service's internal state (THE CRUCIAL FIX)
                 service.apply_update(update_command)
-
-                # 2. Broadcast the token to all clients for them to display
                 message = {
                     "event": "TOKEN_UPDATE",
                     "payload": {
@@ -105,7 +96,6 @@ async def startup_event():
     source_tag = app.state.source_tag
     global service
     service = VocabMonitorService(source_tag)
-    # This starts the service's internal threads, including the clipboard monitor.
     service.start()
     asyncio.create_task(queue_poller())
 
@@ -150,10 +140,12 @@ async def trigger_action(action_name: str):
 @app.post("/api/action/translate_style/{style}")
 async def trigger_translation_style(style: str, request: ConfigRequest):
     try:
-        service.perform_translation_by_style_str(style, request.value)
+        # The frontend sends the display name, but the service needs the internal ID
+        internal_api_id = ai_services_display_names_reverse_map()[request.value]
+        service.perform_translation_by_style_str(style, internal_api_id)
         return {"status": "queued"}
-    except (InvalidTranslationTypeException, ValueError):
-        return {"error": f"Invalid translation style: {style}"}
+    except (InvalidTranslationTypeException, ValueError, KeyError):
+        return {"error": f"Invalid translation style or API service: {style}, {request.value}"}
 
 
 @app.post("/api/action/ask")
@@ -175,12 +167,28 @@ async def update_history(request: HistoryRequest):
     return {"status": "success"}
 
 
+@app.get("/api/config/ai_services")
+async def get_ai_services():
+    """Returns the available AI services and the default one."""
+    services_map = ai_services_display_names_map()
+    default_service_id = settings.get_setting('ai_settings.api')
+    default_display_name = services_map.get(default_service_id, "")
+    return {
+        "services": services_map,
+        "default_service": default_display_name
+    }
+
+
 @app.post("/api/config/{config_name}")
 async def update_config(config_name: str, request: ConfigRequest):
     if config_name == "auto_action":
         service.auto_action = request.value
     elif config_name == "ai_service":
-        service.ai_service_name = request.value
+        try:
+            internal_id = ai_services_display_names_reverse_map()[request.value]
+            service.ai_service_name = internal_id
+        except KeyError:
+            return {"error": "Invalid AI service display name"}
     else:
         return {"error": "Invalid config name"}
     return {"status": "success"}
