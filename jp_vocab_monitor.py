@@ -57,7 +57,7 @@ class MonitorCommand:
 
 class HistoryState:
     def __init__(self, sentence, translation, translation_validation, definitions, question, response,
-                 history):
+                 history, show_qanda):
         self.ui_sentence = sentence
         self.ui_translation = translation
         self.ui_translation_validation = translation_validation
@@ -65,6 +65,7 @@ class HistoryState:
         self.ui_question = question
         self.ui_response = response
         self.history = history
+        self.show_qanda = show_qanda
 
 
 class VocabMonitorService:
@@ -325,7 +326,7 @@ class VocabMonitorService:
         if self.history_states_index >= 0 and self.history_states_index <= len(self.history_states):
             self.history_states[self.history_states_index] = HistoryState(
                 self.ui_sentence, self.ui_translation, self.ui_translation_validation,
-                self.ui_definitions, self.ui_question, self.ui_response, self.history[:]
+                self.ui_definitions, self.ui_question, self.ui_response, self.history[:], self.show_qanda
             )
 
     def _load_history_state_at_index(self, index):
@@ -337,6 +338,7 @@ class VocabMonitorService:
         self.ui_question = history_state.ui_question
         self.ui_response = history_state.ui_response
         self.history = history_state.history
+        self.show_qanda = history_state.show_qanda
         with self.sentence_lock:
             self.locked_sentence = self.ui_sentence
 
@@ -420,7 +422,7 @@ class VocabMonitorService:
 
         self.history_states.append(
             HistoryState(self.ui_sentence, self.ui_translation, self.ui_translation_validation,
-                         self.ui_definitions, self.ui_question, self.ui_response, self.history[:])
+                         self.ui_definitions, self.ui_question, self.ui_response, self.history[:], self.show_qanda)
         )
         self.history_states_index = len(self.history_states) - 1
 
