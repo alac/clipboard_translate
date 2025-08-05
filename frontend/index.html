@@ -266,7 +266,10 @@
                   newState.translation_validation += token;
                 else if (update_type === "define")
                   newState.definitions += token;
-                else if (update_type === "qanda") newState.response += token;
+                else if (update_type === "qanda") {
+                  newState.response += token;
+                  newState.show_qanda = true;
+                }
                 updateState(newState);
               }
             }
@@ -326,6 +329,7 @@
         const askQuestion = () => {
           const questionText = outputArea.innerText;
           if (!questionText.trim()) return;
+          updateState({ question: questionText, show_qanda: true });
           api.post("/api/action/ask", { question: questionText });
         };
         document.getElementById("btn-ask").onclick = askQuestion;
