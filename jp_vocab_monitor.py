@@ -5,7 +5,7 @@ import threading
 import time
 import sys
 from enum import Enum
-from queue import SimpleQueue
+from queue import SimpleQueue, Empty
 from typing import Optional, List, Tuple
 import math
 from collections import Counter
@@ -208,8 +208,12 @@ class VocabMonitorService:
                 self.show_qanda = self.last_command.command_type == "qanda"
                 self.command_queue.put(self.last_command)
 
-    @staticmethod
-    def stop():
+    def stop(self):
+        while not self.command_queue.empty():
+            try:
+                self.command_queue.get_nowait()
+            except Empty:
+                continue
         request_interrupt_atomic_swap(True)
 
     def switch_view(self):
