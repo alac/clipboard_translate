@@ -84,6 +84,9 @@ class VocabMonitorService:
         self.sentence_lock = threading.Lock()
         self.all_seen_sentences = set([])
         self.previous_clipboard = ""
+        self.clipboard_monitoring_enabled = True
+        self.total_copied_lines = 0
+        self.total_ai_requests = 0
 
         # --- UI Data State (managed by the service)
         self.ui_sentence = ""
@@ -101,8 +104,6 @@ class VocabMonitorService:
         self.auto_action = settings.get_setting_fallback('ui.auto_action', TranslationType.Off)
         self.max_auto_triggers = settings.get_setting_fallback("general.max_auto_triggers", 0)
         self.ai_service_name = settings.get_setting("ai_settings.api")
-        self.total_copied_lines = 0
-        self.total_ai_requests = 0
 
         # --- Load initial data
         self._load_history_from_file()
@@ -357,8 +358,12 @@ class VocabMonitorService:
 
         if current_clipboard == self.previous_clipboard:
             return
-
         self.previous_clipboard = current_clipboard
+
+        if not self.clipboard_monitoring_enabled:
+            time.sleep(CLIPBOARD_CHECK_LATENCY_MS / 1000.0)
+            return
+
         if not should_generate_vocabulary_list(sentence=current_clipboard):
             return
 

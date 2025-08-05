@@ -36,6 +36,12 @@ class ConfigRequest(BaseModel):
 class QuestionRequest(BaseModel):
     question: str
 
+class ConfigBoolRequest(BaseModel):
+    enabled: bool
+
+class ConfigRequest(BaseModel):
+    value: str
+
 
 # --- WebSocket Connection Manager ---
 class ConnectionManager:
@@ -177,6 +183,16 @@ async def get_ai_services():
         "services": services_map,
         "default_service": default_display_name
     }
+
+
+@app.post("/api/config/clipboard_monitoring")
+async def set_clipboard_monitoring(request: ConfigBoolRequest):
+    """Sets the clipboard monitoring state on the service."""
+    if service:
+        service.clipboard_monitoring_enabled = request.enabled
+        logging.info(f"Clipboard monitoring set to: {service.clipboard_monitoring_enabled}")
+        return {"status": "success"}
+    return {"status": "error", "detail": "Service not initialized"}
 
 
 @app.post("/api/config/{config_name}")
