@@ -218,9 +218,33 @@
           if (state.show_qanda) {
             textContent = `${state.question.trim()}\n\n${state.response}`;
           } else {
+            function cleanTranslation(s) {
+              const replacePairs = [
+                [
+                  `
+Definition: `,
+                  " - ",
+                ],
+                [
+                  `
+
+`,
+                  `
+`,
+                ],
+              ];
+
+              let newString = s;
+              for (const [find, replace] of replacePairs) {
+                newString = newString.replaceAll(find, replace);
+              }
+
+              return newString;
+            }
+
             textContent = [
               state.sentence,
-              state.translation,
+              cleanTranslation(state.translation),
               state.definitions,
               state.translation_validation,
             ]
