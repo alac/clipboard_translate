@@ -90,10 +90,11 @@ def run_ai_request(
         max_response: int = 2048,
         ban_eos_token: bool = True,
         print_prompt=True,
-        api_override: Optional[str] = None):
+        api_override: Optional[str] = None,
+        print_output=False):
     result = ""
     for tok in run_ai_request_stream(prompt, custom_stopping_strings, temperature, max_response,
-                                     ban_eos_token, print_prompt, api_override):
+                                     ban_eos_token, print_prompt, api_override, print_output):
         result += tok
     if clean_blank_lines:
         result = "\n".join([line for line in "".join(result).splitlines() if len(line.strip()) > 0])
@@ -109,7 +110,8 @@ def run_ai_request_stream(
         max_response: int = 2048,
         ban_eos_token: bool = True,
         print_prompt=True,
-        api_override: Optional[str] = None):
+        api_override: Optional[str] = None,
+        print_output=False):
     def capture_callback(_structured_object: Any):
         pass
 
@@ -121,7 +123,8 @@ def run_ai_request_stream(
                                       max_response,
                                       ban_eos_token,
                                       print_prompt,
-                                      api_override):
+                                      api_override,
+                                      print_output):
         yield tok
 
 
@@ -133,7 +136,8 @@ def run_ai_request_structured_output(
         max_response: int = 2048,
         ban_eos_token: bool = True,
         print_prompt=True,
-        api_override: Optional[str] = None) -> Optional[BaseModel]:
+        api_override: Optional[str] = None,
+        print_output=False) -> Optional[BaseModel]:
     structured_result = None  # type: Optional[BaseModel]
 
     def capture_callback(structured_object: Any):
@@ -148,7 +152,8 @@ def run_ai_request_structured_output(
                                     max_response,
                                     ban_eos_token,
                                     print_prompt,
-                                    api_override):
+                                    api_override,
+                                    print_output):
         pass
 
     return structured_result
@@ -163,10 +168,12 @@ def _run_ai_request_stream(
         max_response: int = 2048,
         ban_eos_token: bool = True,
         print_prompt=True,
-        api_override: Optional[str] = None):
+        api_override: Optional[str] = None,
+        print_output=False):
     api_choice = settings.get_setting('ai_settings.api')
 
-    print(prompt)
+    if print_prompt:
+        print(prompt)
 
     if api_override:
         api_choice = api_override
@@ -181,7 +188,8 @@ def _run_ai_request_stream(
                     custom_stopping_strings,
                     temperature,
                     max_response,
-                    print_prompt):
+                    print_prompt,
+                    print_output):
                 yield tok
         else:
             for tok in run_ai_request_openai_style(
@@ -193,7 +201,8 @@ def _run_ai_request_stream(
                     temperature,
                     max_response,
                     ban_eos_token,
-                    print_prompt):
+                    print_prompt,
+                    print_output):
                 yield tok
     elif api_choice == AI_SERVICE_GEMINI:
         for chunk in run_ai_request_gemini_pro(
@@ -227,7 +236,8 @@ def run_ai_request_openai_style(
         temperature: float = .1,
         max_response: int = 2048,
         ban_eos_token: bool = True,
-        print_prompt=True):
+        print_prompt=True,
+        print_output=False):
     request_url = settings.get_setting(api_choice + '.request_url')
     api_key = settings.get_setting(api_choice + '.api_key')
     system_prompt = settings.get_setting(api_choice + '.system_prompt')
@@ -290,9 +300,12 @@ def run_ai_request_openai_style(
             if event.data == "[DONE]":
                 break
             payload = json.loads(event.data)
+            if 'error' in payload:
+                raise ValueError(payload)
             new_text = payload['choices'][0]['text']
             f.write(new_text)
-            print(new_text, end="")
+            if print_output:
+                print(new_text, end="")
             full_text += new_text
             yield new_text
 
@@ -313,7 +326,8 @@ def run_ai_request_openai_chat_style(
         custom_stopping_strings: Optional[list[str]] = None,
         temperature: float = .1,
         max_response: int = 2048,
-        print_prompt=True):
+        print_prompt=True,
+        print_output=False):
     request_url = settings.get_setting(api_choice + '.request_url')
     api_key = settings.get_setting(api_choice + '.api_key')
     system_prompt = settings.get_setting(api_choice + '.system_prompt')
@@ -370,11 +384,14 @@ def run_ai_request_openai_chat_style(
                 break
             # print(event.data)
             payload = json.loads(event.data)
+            if 'error' in payload:
+                raise ValueError(payload)
             choice = payload['choices'][0]
             new_text = choice.get('delta', {}).get('content')
             if new_text:
                 f.write(new_text)
-                print(new_text, end="")
+                if print_output:
+                    print(new_text, end="")
                 full_text += new_text
                 yield new_text
             if choice.get('finish_reason') in ['stop', 'length']:
