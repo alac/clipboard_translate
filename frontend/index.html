@@ -46,6 +46,11 @@
       .button-group button:hover {
         background-color: #e9ecef;
       }
+      .button-group button:disabled {
+        background-color: #e9ecef;
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
       .button-group label {
         font-size: 0.9em;
         color: #555;
@@ -184,6 +189,9 @@
           question: "",
           response: "",
           show_qanda: false,
+          can_go_previous: false,
+          can_go_next: false,
+          config: { hide_thinking: false },
         };
 
         const api = {
@@ -218,6 +226,14 @@
           if (state.show_qanda) {
             textContent = `${state.question.trim()}\n\n${state.response}`;
           } else {
+            let translationValidation = state.translation_validation;
+            if (state.config && state.config.hide_thinking) {
+              translationValidation = translationValidation.replace(
+                /<think>[\s\S]*?<\/think>/g,
+                ""
+              );
+            }
+
             function cleanTranslation(s) {
               const replacePairs = [
                 [
@@ -246,7 +262,7 @@ Definition: `,
               state.sentence,
               cleanTranslation(state.translation),
               state.definitions,
-              state.translation_validation,
+              translationValidation, // Use potentially modified version
             ]
               .map((s) => s.trim())
               .filter(Boolean)
@@ -259,7 +275,28 @@ Definition: `,
 
         const updateState = (newState) => {
           state = { ...state, ...newState };
+          document.getElementById("btn-prev").disabled = !state.can_go_previous;
+          document.getElementById("btn-next").disabled = !state.can_go_next;
           render();
+        };
+
+        let titleInterval = null;
+        const originalTitle = document.title;
+        const spinner = ["|", "/", "-", "\\"];
+        let spinnerIndex = 0;
+
+        const startTitleAnimation = () => {
+          if (titleInterval) clearInterval(titleInterval);
+          titleInterval = setInterval(() => {
+            document.title = `${spinner[spinnerIndex]} ${originalTitle}`;
+            spinnerIndex = (spinnerIndex + 1) % spinner.length;
+          }, 250);
+        };
+
+        const stopTitleAnimation = () => {
+          if (titleInterval) clearInterval(titleInterval);
+          titleInterval = null;
+          document.title = originalTitle;
         };
 
         const setupWebSocket = () => {
@@ -267,6 +304,7 @@ Definition: `,
           socket.onopen = () => console.log("WebSocket connected");
           socket.onclose = () => {
             console.log("WebSocket disconnected. Reconnecting in 3 seconds...");
+            stopTitleAnimation();
             setTimeout(setupWebSocket, 3000);
           };
           socket.onerror = (error) => {
@@ -295,6 +333,13 @@ Definition: `,
                   newState.show_qanda = true;
                 }
                 updateState(newState);
+              }
+            } else if (message.event === "REQUEST_STATUS_UPDATE") {
+              if (message.payload === "START") {
+                startTitleAnimation();
+              } else {
+                // END
+                stopTitleAnimation();
               }
             }
           };

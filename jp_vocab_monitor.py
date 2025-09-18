@@ -155,7 +155,12 @@ class VocabMonitorService:
             "definitions": self.ui_definitions,
             "question": self.ui_question,
             "response": self.ui_response,
-            "show_qanda": self.show_qanda
+            "show_qanda": self.show_qanda,
+            "can_go_previous": self.history_states_index > 0,
+            "can_go_next": self.history_states_index < (len(self.history_states) - 1),
+            "config": {
+                "hide_thinking": settings.get_setting_fallback("ui.hide_thinking", False)
+            }
         }
 
     def apply_update(self, update_command: UIUpdateCommand):
@@ -215,6 +220,8 @@ class VocabMonitorService:
             except Empty:
                 continue
         request_interrupt_atomic_swap(True)
+        self.ui_update_queue.put(UIUpdateCommand("PROCESSING_STATUS", "", "END"))
+
 
     def switch_view(self):
         self.show_qanda = not self.show_qanda
@@ -448,6 +455,7 @@ class VocabMonitorService:
         """Worker thread to process commands from the command_queue."""
         while True:
             command = queue.get(block=True)
+            self.ui_update_queue.put(UIUpdateCommand("PROCESSING_STATUS", command.sentence, "START"))
             try:
                 with self.sentence_lock:
                     if command.sentence != self.locked_sentence:
@@ -518,6 +526,9 @@ class VocabMonitorService:
 
             except Exception as e:
                 logging.error(f"Exception while running command: {e}")
+            finally:
+                self.ui_update_queue.put(UIUpdateCommand("PROCESSING_STATUS", command.sentence, "END"))
+
 
     def check_rate_limiter(self):
         if self.rate_limiter:

@@ -2,6 +2,7 @@ import argparse
 import datetime
 import logging
 import os
+import re
 import tkinter as tk
 from queue import Empty
 from tkinter.scrolledtext import ScrolledText
@@ -33,6 +34,9 @@ class JpVocabUI:
         self.translation_style: Optional[tk.StringVar] = None
         self.font_size: Optional[tk.StringVar] = None
         self.font_size_changed_signal = None
+        self.prev_button: Optional[tk.Button] = None
+        self.next_button: Optional[tk.Button] = None
+
 
         # --- UI State ---
         self.last_textfield_value = ""
@@ -59,8 +63,8 @@ class JpVocabUI:
 
         # Button definitions with emojis and tooltips
         buttons_config = [
-            {"text": "⬅️", "command": self.go_to_previous, "tooltip": "Previous Entry"},
-            {"text": "➡️", "command": self.go_to_next, "tooltip": "Next Entry"},
+            {"text": "⬅️", "command": self.go_to_previous, "tooltip": "Previous Entry", "name": "prev"},
+            {"text": "➡️", "command": self.go_to_next, "tooltip": "Next Entry", "name": "next"},
             {"text": "⏹️", "command": self.service.stop, "tooltip": "Interrupt AI Request"},
             {"text": "🔁", "command": self.service.retry, "tooltip": "Retry"},
             {"text": "🔊", "command": self.service.trigger_tts, "tooltip": "Listen"},
@@ -74,6 +78,10 @@ class JpVocabUI:
             btn = tk.Button(buttons_frame, text=btn_config["text"], command=btn_config["command"], font=('TkDefaultFont', 12))
             self.create_tooltip(btn, btn_config["tooltip"])
             btn.pack(side=tk.LEFT, padx=2)
+            if btn_config.get("name") == "prev":
+                self.prev_button = btn
+            elif btn_config.get("name") == "next":
+                self.next_button = btn
 
         # Right-side control buttons
         right_controls = tk.Frame(menu_bar)
@@ -293,7 +301,9 @@ class JpVocabUI:
         try:
             while True:
                 update_command = self.service.ui_update_queue.get(False)
-                self.service.apply_update(update_command)
+                # Ignore processing status updates for the Tkinter UI
+                if update_command.update_type != "PROCESSING_STATUS":
+                    self.service.apply_update(update_command)
         except Empty:
             pass  # No more updates in the queue
 
@@ -303,16 +313,26 @@ class JpVocabUI:
         # 3. Render the state in the UI
         self._update_text_area(current_state)
 
+        if self.prev_button:
+            self.prev_button.config(state='normal' if current_state['can_go_previous'] else 'disabled')
+        if self.next_button:
+            self.next_button.config(state='normal' if current_state['can_go_next'] else 'disabled')
+
+
         # 4. Schedule the next update
         self.tk_root.after(UPDATE_LOOP_LATENCY_MS, self._update_loop)
 
     def _update_text_area(self, state: dict):
         """Updates the main text area only if the content has changed."""
+        translation_validation = state['translation_validation']
+        if state.get("config", {}).get("hide_thinking", False):
+            translation_validation = re.sub(r'<think>.*?</think>', '', translation_validation, flags=re.DOTALL)
+
         if state['show_qanda']:
             textfield_value = f"{state['question'].strip()}\n\n{state['response']}"
         else:
             textfield_value = (f"{state['sentence'].strip()}\n\n{state['translation'].strip()}\n\n"
-                               f"{state['definitions'].strip()}\n\n{state['translation_validation'].strip()}")
+                               f"{state['definitions'].strip()}\n\n{translation_validation.strip()}")
 
         if self.last_textfield_value != textfield_value:
             self.last_textfield_value = textfield_value

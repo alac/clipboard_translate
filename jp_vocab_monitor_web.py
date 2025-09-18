@@ -77,6 +77,12 @@ async def queue_poller():
                     "payload": service.get_state()
                 }
                 await manager.broadcast(json.dumps(message))
+            elif update_command.update_type == "PROCESSING_STATUS":
+                message = {
+                    "event": "REQUEST_STATUS_UPDATE",
+                    "payload": update_command.token  # "START" or "END"
+                }
+                await manager.broadcast(json.dumps(message))
             else:
                 service.apply_update(update_command)
                 message = {
