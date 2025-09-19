@@ -12,7 +12,7 @@ import threading
 import time
 import sys
 
-from library.ai_requests import run_ai_request_stream
+from library.ai_requests import run_ai_request_stream, ai_services_display_names_map
 from library.get_dictionary_defs import correct_vocab_readings, parse_vocab_readings_alt
 from library.settings_manager import settings
 
@@ -309,7 +309,8 @@ def translate_with_context_cot(history, sentence, temp=None,
         input_and_output = prompt.replace(examples, "") + "\n" + result
 
         human_readable = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        filename = f"{human_readable}_{int(time.time() * 1000)}_{api_override}.txt"
+        api_display_name = ai_services_display_names_map().get(api_override, api_override)
+        filename = f"{human_readable}_{int(time.time() * 1000)}_{api_display_name}.txt"
 
         folder_name = os.path.join("outputs", datetime.datetime.now().strftime("%Y-%m-%d"))
         os.makedirs(folder_name, exist_ok=True)
