@@ -87,9 +87,14 @@ Definition: in other words, that is to say
 
 甲乙つけがたい (こうおつつけがたい) [kouotsu tsukegatai] exp.
 Definition: hard to choose between, too close to call
+- 甲乙 (こうおつ) [kouotsu] n. - A and B, the two alternatives
+- つける (つける) [tsukeru] v. - to attach, to decide between
+- がたい (がたい) [gatai] aux. - difficult to, hard to (suffix)
 
 って事 (ってこと) [tte koto] exp.
 Definition: meaning that (casual)
+- って [tte] - casual quotation particle (= と)
+- 事 (こと) [koto] n. - thing, matter
 
 一応 (いちおう) [ichiou] adv.
 Definition: for now, somewhat
