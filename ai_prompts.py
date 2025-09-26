@@ -181,8 +181,10 @@ def should_generate_vocabulary_list(sentence):
     if "\n" in sentence:
         logging.info(f"Skipping sentence because of newline: {sentence}")
         return False
-    jp_grammar_parts = ["・", '【', "】", "。", "」", "「", "は" "に", "が", "な", "？", "か", "―", "…", "！", "』", "『", "》", "《"]
-    jp_grammar_parts = jp_grammar_parts + "せぞぼたぱび".split()
+    jp_grammar_parts = ["・", '【', "】", "。", "」", "「", "―", "…", "！", "』", "『", "》", "《", "、"]
+    all_katakana = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロヮワヰヱヲンヴヵヶーッ"
+    all_hiragana = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろゎわゐゑをんゔゕゖーっ"
+    jp_grammar_parts = jp_grammar_parts + list(all_katakana) + list(all_hiragana)
     if [p for p in jp_grammar_parts if p in sentence]:
         return True
     logging.info(f"Skipping sentence because no Japanese detected: {sentence}")
