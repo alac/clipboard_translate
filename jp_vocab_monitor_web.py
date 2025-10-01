@@ -224,6 +224,8 @@ async def read_root():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Web UI for Jp Vocab Monitor.")
     parser.add_argument("source", help="A name for the translation history source (e.g., game name).")
+    parser.add_argument('--port', type=int, default=0,
+                        help='Port number that the server runs on. Picks a free port if not provided.')
     args = parser.parse_args()
 
     source_settings_path = os.path.join("settings", f"{args.source}.toml")
@@ -231,4 +233,4 @@ if __name__ == '__main__':
         settings.override_settings(source_settings_path)
 
     app.state.source_tag = args.source
-    uvicorn.run(app, host="localhost", port=0)  # port 0 picks a free port
+    uvicorn.run(app, host="localhost", port=args.port)  # port 0 picks a free port
