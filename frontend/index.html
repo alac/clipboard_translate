@@ -42,6 +42,7 @@
         border-radius: 4px;
         background-color: #f8f9fa;
         cursor: pointer;
+        transition: background-color 0.2s, border-color 0.2s, color 0.2s;
       }
       .button-group button:hover {
         background-color: #e9ecef;
@@ -65,6 +66,7 @@
         overflow-y: auto;
         background-color: #fff;
         line-height: 1.6;
+        transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
       }
       .modal-backdrop {
         position: fixed;
@@ -98,6 +100,30 @@
       .hidden {
         display: none !important;
       }
+
+      /* Pulsing Green Border for Active Requests */
+      @keyframes pulse-green {
+        0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4); border-color: #4CAF50; }
+        70% { box-shadow: 0 0 0 6px rgba(76, 175, 80, 0); border-color: #4CAF50; }
+        100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); border-color: #ccc; }
+      }
+
+      .processing-active {
+        animation: pulse-green 2s infinite;
+        border-color: #4CAF50 !important;
+      }
+
+      /* Q&A Mode Visuals */
+      .qanda-mode-active-btn {
+        background-color: #007bff !important;
+        color: white !important;
+        border-color: #0056b3 !important;
+      }
+
+      .qanda-mode-active-area {
+        background-color: #f0f8ff !important; /* AliceBlue tint */
+      }
+
     </style>
   </head>
   <body>
@@ -124,7 +150,6 @@
             <option value="Define->Analysis">Define->Analysis</option>
           </select>
           <label for="select-ai-service">Service:</label>
-          <!-- *** THIS IS NOW DYNAMICALLY POPULATED *** -->
           <select id="select-ai-service">
             <option>Loading...</option>
           </select>
@@ -185,6 +210,17 @@
         const aiServiceSelect = document.getElementById("select-ai-service");
         const autoActionSelect = document.getElementById("select-auto-action");
         const fontSizeInput = document.getElementById("spin-font-size");
+        const btnSwitchView = document.getElementById("btn-switch-view");
+
+        // LocalStorage Keys
+        const LS_KEY_AUTO_ACTION = "jp_vocab_auto_action";
+        const LS_KEY_AI_SERVICE = "jp_vocab_ai_service";
+
+        // Initialize Auto-Action from LocalStorage immediately
+        const savedAutoAction = localStorage.getItem(LS_KEY_AUTO_ACTION);
+        if (savedAutoAction) {
+          autoActionSelect.value = savedAutoAction;
+        }
 
         let state = {
           sentence: "",
@@ -226,11 +262,37 @@
           },
         };
 
+        const getSelectedApiServiceDisplayName = () => aiServiceSelect.value;
+
+        // Helper to sync current frontend state to backend (used on reconnect)
+        const syncBackendConfig = () => {
+            console.log("Syncing configuration to backend...");
+            // Sync Auto Action
+            api.post("/api/config/auto_action", {
+                value: autoActionSelect.value,
+            });
+            
+            // Sync AI Service (only if loaded)
+            const currentService = getSelectedApiServiceDisplayName();
+            if (currentService && currentService !== "Loading...") {
+                 api.post("/api/config/ai_service", {
+                    value: currentService,
+                });
+            }
+        };
+
         const render = () => {
           let textContent;
+          
+          // Handle Visual State for Q&A Mode
           if (state.show_qanda) {
             textContent = `${state.question.trim()}\n\n${state.response}`;
+            btnSwitchView.classList.add("qanda-mode-active-btn");
+            outputArea.classList.add("qanda-mode-active-area");
           } else {
+            btnSwitchView.classList.remove("qanda-mode-active-btn");
+            outputArea.classList.remove("qanda-mode-active-area");
+
             let translationValidation = state.translation_validation;
             if (state.config && state.config.hide_thinking) {
               translationValidation = translationValidation.replace(
@@ -254,12 +316,10 @@ Definition: `,
 `,
                 ],
               ];
-
               let newString = s;
               for (const [find, replace] of replacePairs) {
                 newString = newString.replaceAll(find, replace);
               }
-
               return newString;
             }
 
@@ -267,12 +327,13 @@ Definition: `,
               state.sentence,
               cleanTranslation(state.translation),
               state.definitions,
-              translationValidation, // Use potentially modified version
+              translationValidation,
             ]
               .map((s) => s.trim())
               .filter(Boolean)
               .join("\n\n");
           }
+          
           if (outputArea.innerText !== textContent) {
             outputArea.innerText = textContent;
           }
@@ -306,16 +367,24 @@ Definition: `,
 
         const setupWebSocket = () => {
           const socket = new WebSocket(`ws://${window.location.host}/ws`);
-          socket.onopen = () => console.log("WebSocket connected");
+          
+          socket.onopen = () => {
+            console.log("WebSocket connected");
+            syncBackendConfig(); // Restore settings to backend on connect
+          };
+          
           socket.onclose = () => {
             console.log("WebSocket disconnected. Reconnecting in 3 seconds...");
             stopTitleAnimation();
+            outputArea.classList.remove("processing-active");
             setTimeout(setupWebSocket, 3000);
           };
+          
           socket.onerror = (error) => {
             console.error("WebSocket error:", error);
             socket.close();
           };
+          
           socket.onmessage = (event) => {
             const message = JSON.parse(event.data);
             if (message.event === "STATE_UPDATE") {
@@ -342,9 +411,11 @@ Definition: `,
             } else if (message.event === "REQUEST_STATUS_UPDATE") {
               if (message.payload === "START") {
                 startTitleAnimation();
+                outputArea.classList.add("processing-active");
               } else {
                 // END
                 stopTitleAnimation();
+                outputArea.classList.remove("processing-active");
               }
             }
           };
@@ -357,18 +428,29 @@ Definition: `,
           const servicesMap = data.services;
           const defaultServiceDisplayName = data.default_service;
 
-          aiServiceSelect.innerHTML = ""; // Clear loading/existing options
+          aiServiceSelect.innerHTML = ""; 
 
           for (const serviceId in servicesMap) {
             const displayName = servicesMap[serviceId];
             const option = document.createElement("option");
-            option.value = displayName; // The value is the display name, which we send back
+            option.value = displayName;
             option.textContent = displayName;
             aiServiceSelect.appendChild(option);
           }
 
-          // Set the default selection
-          aiServiceSelect.value = defaultServiceDisplayName;
+          // Load from LS or Default
+          const savedService = localStorage.getItem(LS_KEY_AI_SERVICE);
+          // Verify saved service still exists in options
+          const savedServiceExists = Object.values(servicesMap).includes(savedService);
+
+          if (savedService && savedServiceExists) {
+            aiServiceSelect.value = savedService;
+          } else {
+            aiServiceSelect.value = defaultServiceDisplayName;
+          }
+          
+          // Trigger sync now that we have the list populated
+          syncBackendConfig();
         };
 
         // --- Event Listeners ---
@@ -377,7 +459,7 @@ Definition: `,
         document.getElementById("btn-next").onclick = async () =>
           updateState(await api.post("/api/action/next"));
         document.getElementById("btn-retry").onclick = () =>
-          api.post("/api/action/retry"); // No state update needed, result comes on websocket
+          api.post("/api/action/retry");
         document.getElementById("btn-stop").onclick = () =>
           api.post("/api/action/stop");
         document.getElementById("btn-tts").onclick = () =>
@@ -385,7 +467,6 @@ Definition: `,
         document.getElementById("btn-switch-view").onclick = async () =>
           updateState(await api.post("/api/action/switch_view"));
 
-        const getSelectedApiServiceDisplayName = () => aiServiceSelect.value;
 
         document.getElementById("btn-translate").onclick = () =>
           api.post("/api/action/translate_style/Translate", {
@@ -411,8 +492,8 @@ Definition: `,
         outputArea.addEventListener("keydown", (event) => {
           // Using Shift+Enter for consistency with the original app's bindings
           if (event.key === "Enter" && event.shiftKey) {
-            event.preventDefault(); // Prevent adding a newline in the contenteditable div
-            askQuestion(); // Trigger the same logic as the button click
+            event.preventDefault(); 
+            askQuestion(); 
           }
         });
 
@@ -433,14 +514,16 @@ Definition: `,
           api.post("/api/config/clipboard_monitoring", { enabled: true });
         });
 
-        aiServiceSelect.onchange = () =>
-          api.post("/api/config/ai_service", {
-            value: getSelectedApiServiceDisplayName(),
-          });
-        autoActionSelect.onchange = () =>
-          api.post("/api/config/auto_action", {
-            value: autoActionSelect.value,
-          });
+        aiServiceSelect.onchange = () => {
+            const val = getSelectedApiServiceDisplayName();
+            localStorage.setItem(LS_KEY_AI_SERVICE, val);
+            api.post("/api/config/ai_service", { value: val });
+        };
+          
+        autoActionSelect.onchange = () => {
+            localStorage.setItem(LS_KEY_AUTO_ACTION, autoActionSelect.value);
+            api.post("/api/config/auto_action", { value: autoActionSelect.value });
+        };
 
         fontSizeInput.onchange = () =>
           (outputArea.style.fontSize = `${fontSizeInput.value}px`);
@@ -462,7 +545,7 @@ Definition: `,
           historyModal.classList.add("hidden");
 
         // --- Initial Setup ---
-        populateAiServices(); // Fetch and build the AI services dropdown
+        populateAiServices(); 
         setupWebSocket();
       });
     </script>
