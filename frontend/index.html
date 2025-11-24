@@ -365,7 +365,7 @@
             outputArea.classList.remove("qanda-mode-active-area");
 
             let translationValidation = state.translation_validation;
-            if (state.config && state.config.hide_thinking) {
+            if (state.config && state.config.hide_thinking && translationValidation) {
               translationValidation = translationValidation.replace(
                 /<think>[\s\S]*?<\/think>/g,
                 ""
@@ -373,6 +373,10 @@
             }
 
             function cleanTranslation(s) {
+              if (!s) {
+                return "";
+              }
+
               const replacePairs = [
                 [
                   `
@@ -398,9 +402,15 @@ Definition: `,
               state.sentence,
               cleanTranslation(state.translation),
               state.definitions,
-              translationValidation,
+              cleanTranslation(translationValidation),
             ]
-              .map((s) => s.trim())
+              .map((s) => {
+                if (s) {
+                  return s.trim()
+                } else {
+                  return s
+                }
+              })
               .filter(Boolean)
               .join("\n\n");
           }
