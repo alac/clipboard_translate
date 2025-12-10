@@ -165,3 +165,6 @@ max_auto_triggers = 0
 skip_duplicate_lines = false
 include_lines_in_output_in_duplicate_set = false
 enable_interrupt = true
+
+[app]
+hot_reload = true
