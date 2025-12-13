@@ -255,7 +255,7 @@ def translate_with_context_cot(history, sentence, temp=None,
         context = settings.get_setting('general.translation_context')
         if suggested_readings:
             if settings.get_setting('define_into_analysis.enable_jmdict_replacements'):
-                combine_readings = settings.get_setting_fallback('define_into_analysis.combine_all_readings', False)
+                combine_readings = settings.get_setting('define_into_analysis.combine_all_readings', False)
                 vocab = parse_vocab_readings_alt(suggested_readings)
                 vocab = correct_vocab_readings(vocab, combine_readings)
 
@@ -299,10 +299,10 @@ def translate_with_context_cot(history, sentence, temp=None,
         _, just_translated_sentence = result.split("4. Translation:")
         print(f"{ANSIColors.CYAN}{just_translated_sentence}{ANSIColors.END}")
 
-    save_cot_outputs = (settings.get_setting_fallback('translate_cot.save_cot_outputs', False)
+    save_cot_outputs = (settings.get_setting('translate_cot.save_cot_outputs', False)
                         and api_override
-                        in settings.get_setting_fallback('translate_cot.save_cot_outputs_ai_providers', []))
-    min_length_to_save_cot_output = settings.get_setting_fallback('translate_cot.min_length_to_save_cot_output', 30)
+                        in settings.get_setting('translate_cot.save_cot_outputs_ai_providers', []))
+    min_length_to_save_cot_output = settings.get_setting('translate_cot.min_length_to_save_cot_output', 30)
     if len(sentence) > min_length_to_save_cot_output and save_cot_outputs:
         last_tag_start = result.rfind("<")
         if last_tag_start != -1 and last_tag_start > result.rfind("\n"):

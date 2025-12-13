@@ -89,7 +89,7 @@ class JpVocabUI:
 
         # Auto-action dropdown
         self.translation_style = tk.StringVar()
-        self.translation_style.set(settings.get_setting_fallback('ui.auto_action', TranslationType.Off))
+        self.translation_style.set(settings.get_setting('ui.auto_action', TranslationType.Off))
         self.translation_style.trace('w', self.on_auto_action_change)
         translate_label = tk.Label(right_controls, text="Auto-action:")
         translate_label.pack(side=tk.LEFT, padx=2)
@@ -188,21 +188,21 @@ class JpVocabUI:
 
     def trigger_basic_translation(self):
         try:
-            style = settings.get_setting_fallback('ui.translate_button_action', TranslationType.Translate.value)
+            style = settings.get_setting('ui.translate_button_action', TranslationType.Translate.value)
             self.service.perform_translation_by_style_str(style, self._get_selected_api())
         except (InvalidTranslationTypeException, ValueError):
             self.service.perform_translation(TranslationType.Translate, self._get_selected_api())
 
     def trigger_cot_translation(self):
         try:
-            style = settings.get_setting_fallback('ui.analyze_button_action', TranslationType.ChainOfThought.value)
+            style = settings.get_setting('ui.analyze_button_action', TranslationType.ChainOfThought.value)
             self.service.perform_translation_by_style_str(style, self._get_selected_api())
         except (InvalidTranslationTypeException, ValueError):
             self.service.perform_translation(TranslationType.ChainOfThought, self._get_selected_api())
 
     def trigger_get_definitions(self):
         try:
-            style = settings.get_setting_fallback('ui.define_button_action', TranslationType.Define.value)
+            style = settings.get_setting('ui.define_button_action', TranslationType.Define.value)
             self.service.perform_translation_by_style_str(style, self._get_selected_api())
         except (InvalidTranslationTypeException, ValueError):
             self.service.perform_translation(TranslationType.Define, self._get_selected_api())

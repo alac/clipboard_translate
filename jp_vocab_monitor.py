@@ -99,16 +99,16 @@ class VocabMonitorService:
         self.show_qanda = False
 
         # --- Settings & Limits
-        rate_limit = settings.get_setting_fallback("general.rate_limit", None)
+        rate_limit = settings.get_setting("general.rate_limit", None)
         self.rate_limiter = RateLimiter(requests_per_minute=rate_limit) if rate_limit and rate_limit > 0 else None
         self.history_length = settings.get_setting('general.translation_history_length')
-        self.auto_action = settings.get_setting_fallback('ui.auto_action', TranslationType.Off)
-        self.max_auto_triggers = settings.get_setting_fallback("general.max_auto_triggers", 0)
+        self.auto_action = settings.get_setting('ui.auto_action', TranslationType.Off)
+        self.max_auto_triggers = settings.get_setting("general.max_auto_triggers", 0)
         self.ai_service_name = settings.get_setting("ai_settings.api")
 
         # --- Load initial data
         self._load_history_from_file()
-        if settings.get_setting_fallback("general.include_lines_in_output_in_duplicate_set", False):
+        if settings.get_setting("general.include_lines_in_output_in_duplicate_set", False):
             add_previous_lines_to_seen_lines(self.all_seen_sentences, "outputs")
             print(f"Seen lines {len(self.all_seen_sentences)}")
 
@@ -159,7 +159,7 @@ class VocabMonitorService:
             "can_go_previous": self.history_states_index > 0,
             "can_go_next": self.history_states_index < (len(self.history_states) - 1),
             "config": {
-                "hide_thinking": settings.get_setting_fallback("ui.hide_thinking", False)
+                "hide_thinking": settings.get_setting("ui.hide_thinking", False)
             }
         }
 
@@ -263,14 +263,14 @@ class VocabMonitorService:
                 "translate",
                 self.ui_sentence,
                 self.history[:],
-                temp=settings.get_setting_fallback('translate_best_of_three.first_temperature', .7),
+                temp=settings.get_setting('translate_best_of_three.first_temperature', .7),
                 index=1,
                 api_override=api_override))
             self.command_queue.put(MonitorCommand(
                 "translate",
                 self.ui_sentence,
                 self.history[:],
-                temp=settings.get_setting_fallback('translate_best_of_three.second_temperature', .7),
+                temp=settings.get_setting('translate_best_of_three.second_temperature', .7),
                 style="Aim for a literal translation.",
                 index=2,
                 api_override=api_override))
@@ -278,7 +278,7 @@ class VocabMonitorService:
                 "translate",
                 self.ui_sentence,
                 self.history[:],
-                temp=settings.get_setting_fallback('translate_best_of_three.third_temperature', .7),
+                temp=settings.get_setting('translate_best_of_three.third_temperature', .7),
                 style="Aim for a natural translation.",
                 index=3,
                 api_override=api_override))
@@ -383,7 +383,7 @@ class VocabMonitorService:
         # --- New sentence detected ---
         self.total_copied_lines += 1
 
-        interrupt_enabled = (settings.get_setting_fallback("general.enable_interrupt", True)
+        interrupt_enabled = (settings.get_setting("general.enable_interrupt", True)
                              or not is_request_ongoing())
         if interrupt_enabled:
             self.stop()
@@ -399,7 +399,7 @@ class VocabMonitorService:
 
         logging.info(f"New sentence: {next_sentence}")
         is_length_okay = (len(next_sentence) >
-                          settings.get_setting_fallback("general.min_length_for_auto_behavior", 0))
+                          settings.get_setting("general.min_length_for_auto_behavior", 0))
         is_uniqueness_okay = next_sentence not in self.all_seen_sentences
 
         if is_length_okay and is_uniqueness_okay and interrupt_enabled:
@@ -410,7 +410,7 @@ class VocabMonitorService:
                     if self.max_auto_triggers <= 0:
                         sys.exit(0)
 
-        if settings.get_setting_fallback("general.skip_duplicate_lines", False):
+        if settings.get_setting("general.skip_duplicate_lines", False):
             self.all_seen_sentences.add(next_sentence.strip())
 
     def _set_new_sentence(self, sentence: str):

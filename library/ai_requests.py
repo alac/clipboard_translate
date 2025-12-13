@@ -484,8 +484,8 @@ def run_ai_request_claude(
     """Run request using Claude Sonnet API with streaming support."""
 
     api_key = settings.get_setting('claude_api.api_key')
-    model = settings.get_setting_fallback('claude_api.model', 'claude-3-sonnet-20240229')
-    system_prompt = settings.get_setting_fallback('claude_api.system_prompt', '')
+    model = settings.get_setting('claude_api.model', 'claude-3-sonnet-20240229')
+    system_prompt = settings.get_setting('claude_api.system_prompt', '')
 
     # Initialize the Anthropic client
     client = anthropic.Anthropic(api_key=api_key)
