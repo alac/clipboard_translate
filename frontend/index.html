@@ -17,6 +17,8 @@
         --accent-text: #ffffff;
         --pulse-color: #4CAF50;
         --qanda-tint: #f0f8ff; /* AliceBlue */
+        --toast-bg: #ff9800;
+        --toast-text: #ffffff;
       }
 
       [data-theme="dark"] {
@@ -30,6 +32,7 @@
         --accent-text: #ffffff;
         --pulse-color: #4CAF50;
         --qanda-tint: #1a2634; /* Dark Blue-ish tint */
+        --toast-bg: #ff9800; /* Orange for visibility */
       }
 
       body {
@@ -133,6 +136,36 @@
 
       .qanda-mode-active-area {
         background-color: var(--qanda-tint) !important;
+      }
+
+      /* Config Reload Toast */
+      .reload-toast {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background-color: var(--toast-bg);
+        color: var(--toast-text);
+        padding: 12px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        cursor: pointer;
+        z-index: 1000;
+        font-weight: bold;
+        transition: opacity 0.3s, transform 0.3s;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(20px);
+      }
+
+      .reload-toast.visible {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0);
+      }
+
+      .reload-toast:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 8px rgba(0,0,0,0.3);
       }
 
       /* Modal */
@@ -239,6 +272,11 @@
       </div>
     </div>
 
+    <!-- Reload Toast -->
+    <div id="reload-toast" class="reload-toast">
+      ⚙️ Config Updated - Click to Refresh
+    </div>
+
     <!-- History Modal -->
     <div id="history-modal" class="modal-backdrop hidden">
       <div class="modal-content">
@@ -261,6 +299,7 @@
         const fontSizeInput = document.getElementById("spin-font-size");
         const btnSwitchView = document.getElementById("btn-switch-view");
         const btnTheme = document.getElementById("btn-theme");
+        const reloadToast = document.getElementById("reload-toast");
 
         // LocalStorage Keys
         const LS_KEY_AUTO_ACTION = "jp_vocab_auto_action";
@@ -335,6 +374,28 @@
           },
         };
 
+        // --- Status Polling for Hot Reload ---
+        let lastReloadTime = null;
+        reloadToast.onclick = () => window.location.reload();
+
+        const checkSystemStatus = async () => {
+            try {
+                const data = await api.get("/api/system/status");
+                if (data && data.last_reload_time) {
+                    if (lastReloadTime === null) {
+                        lastReloadTime = data.last_reload_time;
+                    } else if (data.last_reload_time > lastReloadTime) {
+                        reloadToast.classList.add("visible");
+                    }
+                }
+            } catch (e) {
+                // Ignore errors (server might be down momentarily)
+            }
+        };
+
+        // Poll every 5 seconds
+        setInterval(checkSystemStatus, 5000);
+
         const getSelectedApiServiceDisplayName = () => aiServiceSelect.value;
 
         // Sync frontend settings to backend on connection
@@ -343,7 +404,7 @@
             api.post("/api/config/auto_action", {
                 value: autoActionSelect.value,
             });
-            
+
             const currentService = getSelectedApiServiceDisplayName();
             if (currentService && currentService !== "Loading...") {
                  api.post("/api/config/ai_service", {
@@ -354,7 +415,7 @@
 
         const render = () => {
           let textContent;
-          
+
           // Handle Visual State for Q&A Mode
           if (state.show_qanda) {
             textContent = `${state.question.trim()}\n\n${state.response}`;
@@ -414,7 +475,7 @@ Definition: `,
               .filter(Boolean)
               .join("\n\n");
           }
-          
+
           if (outputArea.innerText !== textContent) {
             outputArea.innerText = textContent;
           }
@@ -448,24 +509,26 @@ Definition: `,
 
         const setupWebSocket = () => {
           const socket = new WebSocket(`ws://${window.location.host}/ws`);
-          
+
           socket.onopen = () => {
             console.log("WebSocket connected");
             syncBackendConfig();
+            // Perform an initial status check on connection
+            checkSystemStatus();
           };
-          
+
           socket.onclose = () => {
             console.log("WebSocket disconnected. Reconnecting in 3 seconds...");
             stopTitleAnimation();
             outputArea.classList.remove("processing-active");
             setTimeout(setupWebSocket, 3000);
           };
-          
+
           socket.onerror = (error) => {
             console.error("WebSocket error:", error);
             socket.close();
           };
-          
+
           socket.onmessage = (event) => {
             const message = JSON.parse(event.data);
             if (message.event === "STATE_UPDATE") {
@@ -508,7 +571,7 @@ Definition: `,
           const servicesMap = data.services;
           const defaultServiceDisplayName = data.default_service;
 
-          aiServiceSelect.innerHTML = ""; 
+          aiServiceSelect.innerHTML = "";
 
           for (const serviceId in servicesMap) {
             const displayName = servicesMap[serviceId];
@@ -567,8 +630,8 @@ Definition: `,
         outputArea.addEventListener("keydown", (event) => {
           // Using Shift+Enter for consistency with the original app's bindings
           if (event.key === "Enter" && event.shiftKey) {
-            event.preventDefault(); 
-            askQuestion(); 
+            event.preventDefault();
+            askQuestion();
           }
         });
 
@@ -595,7 +658,7 @@ Definition: `,
             localStorage.setItem(LS_KEY_AI_SERVICE, val);
             api.post("/api/config/ai_service", { value: val });
         };
-          
+
         autoActionSelect.onchange = () => {
             localStorage.setItem(LS_KEY_AUTO_ACTION, autoActionSelect.value);
             api.post("/api/config/auto_action", { value: autoActionSelect.value });
@@ -621,7 +684,7 @@ Definition: `,
           historyModal.classList.add("hidden");
 
         // --- Initial Setup ---
-        populateAiServices(); 
+        populateAiServices();
         setupWebSocket();
       });
     </script>

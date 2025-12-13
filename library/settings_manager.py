@@ -27,6 +27,9 @@ class SettingsManager:
         self._watcher_thread = None
         self._stop_watcher = False
 
+        # Timestamp for cache invalidation in other modules
+        self.last_reload_time = time.time()
+
     def load_settings(self, defaults_file_path: str, user_file_path: Optional[str]):
         self._default_path = defaults_file_path
         self._user_path = user_file_path
@@ -53,6 +56,10 @@ class SettingsManager:
             if self._user_path and os.path.exists(self._user_path):
                 with open(self._user_path, "rb") as f:
                     self._user_settings = tomli.load(f)
+
+            # Update the reload timestamp
+            self.last_reload_time = time.time()
+
         except Exception as e:
             # If a reload happens while the user is typing (invalid TOML),
             # we catch it here to prevent the app from crashing.
@@ -62,9 +69,11 @@ class SettingsManager:
     def override_settings(self, file_path):
         with open(file_path, "rb") as f:
             self._override_settings = tomli.load(f)
+        self.last_reload_time = time.time()
 
     def remove_override_settings(self):
         self._override_settings = None
+        self.last_reload_time = time.time()
 
     def _get_setting(self, setting_name: str) -> Any:
         if self._override_settings is not None:
@@ -114,7 +123,6 @@ class SettingsManager:
             time.sleep(2)  # Check every 2 seconds
 
             # Check if hot reload is enabled in the CURRENT settings.
-            # We use a try/except block or default to False if the key is missing.
             try:
                 # Assuming the setting key is 'app.hot_reload'. Change as needed.
                 hot_reload_enabled = self.get_setting("app.hot_reload", default=False)

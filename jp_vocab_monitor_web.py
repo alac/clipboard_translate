@@ -130,6 +130,14 @@ async def websocket_endpoint(websocket: WebSocket):
 
 # --- REST API Endpoints ---
 
+@app.get("/api/system/status")
+async def get_system_status():
+    """Returns system status including configuration timestamps."""
+    return {
+        "status": "online",
+        "last_reload_time": settings.last_reload_time
+    }
+
 @app.post("/api/action/ask")
 async def ask_a_question(request: QuestionRequest):
     api_service = service.ai_service_name

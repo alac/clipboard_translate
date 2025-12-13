@@ -10,7 +10,6 @@ from typing import Optional, List, Tuple
 import math
 from collections import Counter
 
-
 import pyperclip
 from ai_prompts import (UIUpdateCommand, run_vocabulary_list, translate_with_context, translate_with_context_cot,
                         request_interrupt_atomic_swap, ask_question, should_generate_vocabulary_list,
@@ -18,7 +17,6 @@ from ai_prompts import (UIUpdateCommand, run_vocabulary_list, translate_with_con
 from library.rate_limiter import RateLimiter
 from library.settings_manager import settings
 from library.get_dictionary_defs import get_definitions_string
-
 
 CLIPBOARD_CHECK_LATENCY_MS = 250
 UPDATE_LOOP_LATENCY_MS = 50
@@ -99,18 +97,51 @@ class VocabMonitorService:
         self.show_qanda = False
 
         # --- Settings & Limits
-        rate_limit = settings.get_setting("general.rate_limit", None)
-        self.rate_limiter = RateLimiter(requests_per_minute=rate_limit) if rate_limit and rate_limit > 0 else None
-        self.history_length = settings.get_setting('general.translation_history_length')
-        self.auto_action = settings.get_setting('ui.auto_action', TranslationType.Off)
+        # Rate limiter is stateful but depends on config, so we cache the config value to detect changes
+        self.rate_limiter = None
+        self._cached_rate_limit = None
+
+        # Override fields for UI interactions
+        self._auto_action_override = None
+        self._ai_service_name_override = None
+
+        # Initialize Rate Limiter
+        self.check_rate_limiter()
+
         self.max_auto_triggers = settings.get_setting("general.max_auto_triggers", 0)
-        self.ai_service_name = settings.get_setting("ai_settings.api")
 
         # --- Load initial data
         self._load_history_from_file()
         if settings.get_setting("general.include_lines_in_output_in_duplicate_set", False):
             add_previous_lines_to_seen_lines(self.all_seen_sentences, "outputs")
             print(f"Seen lines {len(self.all_seen_sentences)}")
+
+    # --- Configuration Properties for Hot Reloading ---
+
+    @property
+    def history_length(self):
+        return settings.get_setting('general.translation_history_length', 10)
+
+    @property
+    def auto_action(self):
+        if self._auto_action_override is not None:
+            return self._auto_action_override
+        # Ensure we return a value compatible with TranslationType (usually string match is enough)
+        return settings.get_setting('ui.auto_action', TranslationType.Off)
+
+    @auto_action.setter
+    def auto_action(self, value):
+        self._auto_action_override = value
+
+    @property
+    def ai_service_name(self):
+        if self._ai_service_name_override is not None:
+            return self._ai_service_name_override
+        return settings.get_setting("ai_settings.api")
+
+    @ai_service_name.setter
+    def ai_service_name(self, value):
+        self._ai_service_name_override = value
 
     def _load_history_from_file(self):
         cache_file = os.path.join("translation_history", f"{self.source}.json")
@@ -221,7 +252,6 @@ class VocabMonitorService:
                 continue
         request_interrupt_atomic_swap(True)
         self.ui_update_queue.put(UIUpdateCommand("PROCESSING_STATUS", "", "END"))
-
 
     def switch_view(self):
         self.show_qanda = not self.show_qanda
@@ -403,6 +433,7 @@ class VocabMonitorService:
         is_uniqueness_okay = next_sentence not in self.all_seen_sentences
 
         if is_length_okay and is_uniqueness_okay and interrupt_enabled:
+            # We access the property here, which checks override first, then settings
             if self.auto_action != TranslationType.Off.value:
                 self.perform_translation_by_style_str(self.auto_action, self.ai_service_name)
                 if self.max_auto_triggers > 0:
@@ -463,8 +494,7 @@ class VocabMonitorService:
                     if command.command_type != "translation_validation":
                         self.last_command = command
 
-                if self.rate_limiter:
-                    self.rate_limiter.wait_if_needed()
+                self.check_rate_limiter()
 
                 # --- Execute Command ---
                 if command.command_type == "translate":
@@ -516,11 +546,11 @@ class VocabMonitorService:
                                         api_override=command.api_override)
                 elif command.command_type == "qanda":
                     ask_question(command.prompt,
-                                command.sentence,
-                                command.history,
-                                temp=command.temp,
-                                update_queue=self.ui_update_queue,
-                                api_override=command.api_override)
+                                 command.sentence,
+                                 command.history,
+                                 temp=command.temp,
+                                 update_queue=self.ui_update_queue,
+                                 api_override=command.api_override)
                 elif command.command_type == "tts":
                     generate_tts(command.sentence)
 
@@ -529,8 +559,18 @@ class VocabMonitorService:
             finally:
                 self.ui_update_queue.put(UIUpdateCommand("PROCESSING_STATUS", command.sentence, "END"))
 
-
     def check_rate_limiter(self):
+        # Hot-reload check for rate limit setting
+        current_limit_setting = settings.get_setting("general.rate_limit", None)
+
+        if current_limit_setting != self._cached_rate_limit:
+            self._cached_rate_limit = current_limit_setting
+            logging.info(f"Updating rate limit to: {current_limit_setting}")
+            if current_limit_setting and current_limit_setting > 0:
+                self.rate_limiter = RateLimiter(requests_per_minute=current_limit_setting)
+            else:
+                self.rate_limiter = None
+
         if self.rate_limiter:
             self.rate_limiter.wait_if_needed()
 

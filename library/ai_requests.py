@@ -5,6 +5,7 @@ import os
 import sseclient
 import urllib3
 import certifi
+import time
 from pydantic import BaseModel, ValidationError, create_model
 from typing import Optional, Union, Type, get_args, get_origin, Any, Callable, Literal
 import inspect
@@ -31,9 +32,14 @@ AiServiceType = Literal[
 
 AI_SERVICES_DISPLAY_NAME = {}
 AI_SERVICES_DISPLAY_NAME_REVERSE = {}
+_last_map_update_time = 0
 
 
 def _populate_display_names_map():
+    global _last_map_update_time
+    AI_SERVICES_DISPLAY_NAME.clear()
+    AI_SERVICES_DISPLAY_NAME_REVERSE.clear()
+
     AI_SERVICES_DISPLAY_NAME[AI_SERVICE_GEMINI] = AI_SERVICE_GEMINI
     AI_SERVICES_DISPLAY_NAME_REVERSE[AI_SERVICE_GEMINI] = AI_SERVICE_GEMINI
     AI_SERVICES_DISPLAY_NAME[AI_SERVICE_CLAUDE] = AI_SERVICE_CLAUDE
@@ -44,15 +50,22 @@ def _populate_display_names_map():
         AI_SERVICES_DISPLAY_NAME[service_id] = display_name
         AI_SERVICES_DISPLAY_NAME_REVERSE[display_name] = service_id
 
+    _last_map_update_time = time.time()
+
 
 def ai_services_display_names_map():
-    if len(AI_SERVICES_DISPLAY_NAME.items()) == 0:
+    # Check if settings have been reloaded since we last populated the map
+    if _last_map_update_time < settings.last_reload_time:
+        _populate_display_names_map()
+    elif len(AI_SERVICES_DISPLAY_NAME.items()) == 0:
         _populate_display_names_map()
     return AI_SERVICES_DISPLAY_NAME
 
 
 def ai_services_display_names_reverse_map():
-    if len(AI_SERVICES_DISPLAY_NAME.items()) == 0:
+    if _last_map_update_time < settings.last_reload_time:
+        _populate_display_names_map()
+    elif len(AI_SERVICES_DISPLAY_NAME.items()) == 0:
         _populate_display_names_map()
     return AI_SERVICES_DISPLAY_NAME_REVERSE
 
