@@ -436,7 +436,7 @@ def run_ai_request_gemini_pro(
     try:
         client = google_genai.Client(api_key=settings.get_setting('gemini_pro_api.api_key'))
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model=settings.get_setting('gemini_pro_api.api_model'),
             contents=system_prompt + "\n" + prompt,
             config={
                 'response_mime_type': response_type,
