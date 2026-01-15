@@ -97,8 +97,8 @@ def stream_with_stats(
 
             # Handle models getting stuck in a loop
             last_tokens.append(tok)
-            last_tokens = last_tokens[-10:]
-            if len(last_tokens) == 10 and len(set(last_tokens)) <= 3:
+            last_tokens = last_tokens[-40:]
+            if len(last_tokens) == 40 and len(set(last_tokens)) <= 3:
                 logging.warning(f"AI generated exited because of looping response: {last_tokens}")
                 return None
     finally:
@@ -222,7 +222,7 @@ def run_kanji_breakdown(phrase: str,
                                          print_prompt=False,
                                          temperature=temp,
                                          ban_eos_token=False,
-                                         max_response=1000,
+                                         max_response=4096,
                                          api_override=api_service)
 
     # 4. Stream with stats handles the queue putting
