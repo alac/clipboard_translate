@@ -13,7 +13,7 @@ from collections import Counter
 import pyperclip
 from ai_prompts import (UIUpdateCommand, run_vocabulary_list, translate_with_context, translate_with_context_cot,
                         request_interrupt_atomic_swap, ask_question, should_generate_vocabulary_list,
-                        is_request_ongoing, generate_tts)
+                        is_request_ongoing, generate_tts, run_kanji_breakdown)
 from library.rate_limiter import RateLimiter
 from library.settings_manager import settings
 from library.get_dictionary_defs import get_definitions_string
@@ -196,8 +196,9 @@ class VocabMonitorService:
 
     def apply_update(self, update_command: UIUpdateCommand):
         """Applies a single token update from the AI stream to the internal state."""
-        if update_command.sentence != self.ui_sentence:
-            return  # Ignore updates for old sentences
+        if update_command.update_type != "kanji_breakdown":
+            if update_command.sentence != self.ui_sentence:
+                return  # Ignore updates for old sentences
 
         if update_command.update_type == "translate":
             self.ui_translation += update_command.token
@@ -358,6 +359,19 @@ class VocabMonitorService:
         self.command_queue.put(MonitorCommand("qanda", self.ui_sentence, self.history[:], self.ui_question,
                                               temp=0, api_override=api_override))
 
+    def trigger_breakdown(self, text: str):
+        """Triggers a kanji breakdown request."""
+        # We do NOT call self.stop() here because we might want this to run
+        # while the main translation is still visible.
+        # However, track_running_request in ai_prompts enforces one AI request at a time
+        # globally. If you want true parallelism, we'd need to remove @track_running_request
+        # from the specific functions or use different locks.
+        # For now, let's stop current generation to avoid race conditions on the stdout printer.
+        self.stop()
+
+        # We use the text as the "sentence" for the command, but we won't lock the main UI to it.
+        self.command_queue.put(MonitorCommand("kanji_breakdown", text, []))
+
     def trigger_tts(self):
         self.command_queue.put(MonitorCommand("tts", self.ui_sentence, self.history[:]))
 
@@ -486,13 +500,18 @@ class VocabMonitorService:
         """Worker thread to process commands from the command_queue."""
         while True:
             command = queue.get(block=True)
-            self.ui_update_queue.put(UIUpdateCommand("PROCESSING_STATUS", command.sentence, "START"))
+            status_token = "START"
+            if command.command_type == "kanji_breakdown":
+                status_token = "START_BREAKDOWN"
+            self.ui_update_queue.put(UIUpdateCommand("PROCESSING_STATUS", command.sentence, status_token))
+
             try:
-                with self.sentence_lock:
-                    if command.sentence != self.locked_sentence:
-                        continue
-                    if command.command_type != "translation_validation":
-                        self.last_command = command
+                if command.command_type not in ["kanji_breakdown"]:
+                    with self.sentence_lock:
+                        if command.sentence != self.locked_sentence:
+                            continue
+                        if command.command_type != "translation_validation":
+                            self.last_command = command
 
                 self.check_rate_limiter()
 
@@ -553,11 +572,17 @@ class VocabMonitorService:
                                  api_override=command.api_override)
                 elif command.command_type == "tts":
                     generate_tts(command.sentence)
+                elif command.command_type == "kanji_breakdown":
+                    run_kanji_breakdown(command.sentence, update_queue=self.ui_update_queue)
 
             except Exception as e:
                 logging.error(f"Exception while running command: {e}")
             finally:
-                self.ui_update_queue.put(UIUpdateCommand("PROCESSING_STATUS", command.sentence, "END"))
+                # Special handling for kanji_breakdown status
+                status_token = "END"
+                if command.command_type == "kanji_breakdown":
+                    status_token = "END_BREAKDOWN"
+                self.ui_update_queue.put(UIUpdateCommand("PROCESSING_STATUS", command.sentence, status_token))
 
     def check_rate_limiter(self):
         # Hot-reload check for rate limit setting

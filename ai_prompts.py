@@ -192,6 +192,44 @@ def should_generate_vocabulary_list(sentence):
 
 
 @track_running_request
+def run_kanji_breakdown(phrase: str,
+                        update_queue: Optional[SimpleQueue[UIUpdateCommand]] = None) -> Optional[str]:
+    # 1. Get settings specific to breakdown
+    temp = settings.get_setting('kanji_breakdown.temperature', 0.3)
+    api_service = settings.get_setting('kanji_breakdown.api_service', settings.get_setting('ai_settings.api'))
+    prompt_file = settings.get_setting('kanji_breakdown.prompt_filepath')
+    stopping_strings = settings.get_setting('kanji_breakdown.stopping_strings')
+
+    request_interrupt_atomic_swap(False)
+
+    try:
+        template = read_file_or_throw(prompt_file)
+        template_data = {
+            'phrase': phrase
+        }
+        prompt = Template(template).safe_substitute(template_data)
+    except FileNotFoundError as e:
+        logging.error(f"Error loading prompt template: {e}")
+        return None
+
+    # 2. Notify start (optional, but good for clearing UI)
+    if update_queue is not None:
+        update_queue.put(UIUpdateCommand("kanji_breakdown", phrase, ""))
+
+    # 3. Run Stream
+    token_stream = run_ai_request_stream(prompt,
+                                         stopping_strings,
+                                         print_prompt=False,
+                                         temperature=temp,
+                                         ban_eos_token=False,
+                                         max_response=1000,
+                                         api_override=api_service)
+
+    # 4. Stream with stats handles the queue putting
+    return stream_with_stats(token_stream, phrase, update_queue, "kanji_breakdown")
+
+
+@track_running_request
 def translate_with_context(history, sentence, temp=None, style="",
                            update_queue: Optional[SimpleQueue[UIUpdateCommand]] = None, index: int = 0,
                            api_override: Optional[str] = None) -> Optional[str]:

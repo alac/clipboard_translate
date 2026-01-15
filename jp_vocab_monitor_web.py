@@ -30,17 +30,22 @@ service: VocabMonitorService = None
 class HistoryRequest(BaseModel):
     history: List[str]
 
+
 class ConfigRequest(BaseModel):
     value: str
+
 
 class QuestionRequest(BaseModel):
     question: str
 
+
 class ConfigBoolRequest(BaseModel):
     enabled: bool
 
-class ConfigRequest(BaseModel):
-    value: str
+
+class BreakdownRequest(BaseModel):
+    text: str
+
 
 
 # --- WebSocket Connection Manager ---
@@ -154,6 +159,12 @@ async def trigger_translation_style(style: str, request: ConfigRequest):
         return {"status": "queued"}
     except (InvalidTranslationTypeException, ValueError, KeyError):
         return {"error": f"Invalid translation style or API service: {style}, {request.value}"}
+
+
+@app.post("/api/action/breakdown")
+async def trigger_breakdown(request: BreakdownRequest):
+    service.trigger_breakdown(request.text)
+    return {"status": "queued"}
 
 
 @app.post("/api/action/{action_name}")

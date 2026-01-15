@@ -92,11 +92,29 @@
         cursor: not-allowed;
         opacity: 0.5;
       }
+      
+      .button-group input[type="text"] {
+          background-color: var(--card-bg);
+          color: var(--text-color);
+      }
 
       .button-group label {
         font-size: 0.9em;
         color: var(--text-color);
         opacity: 0.8;
+      }
+
+      /* Spinner Animation */
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      .loading-spinner::after {
+        content: "⏳";
+        display: inline-block;
+        animation: spin 1s infinite linear;
+        margin-left: 5px;
       }
 
       .output-area {
@@ -187,11 +205,12 @@
         padding: 20px;
         border-radius: 8px;
         width: 80%;
-        max-width: 600px;
+        max-width: 800px;
         display: flex;
         flex-direction: column;
         gap: 10px;
         border: 1px solid var(--border-color);
+        max-height: 90vh;
       }
       .modal-content textarea {
         height: 300px;
@@ -201,6 +220,16 @@
         color: var(--text-color);
         border: 1px solid var(--border-color);
         padding: 8px;
+        font-size: 16px;
+      }
+      .modal-body-scroll {
+        overflow-y: auto;
+        flex-grow: 1;
+        padding: 10px;
+        border: 1px solid var(--border-color);
+        background-color: var(--secondary-bg);
+        white-space: pre-wrap;
+        min-height: 200px;
       }
       .hidden {
         display: none !important;
@@ -230,11 +259,23 @@
             <option value="Define (without AI)">Define (without AI)</option>
             <option value="Define->Analysis">Define->Analysis</option>
           </select>
+          
           <label for="select-ai-service">Service:</label>
           <select id="select-ai-service">
             <option>Loading...</option>
           </select>
+          
           <button id="btn-history">📋 History</button>
+          <!-- Font Size moved here -->
+          <label for="spin-font-size" style="margin-left:5px">A</label>
+          <input
+            id="spin-font-size"
+            type="number"
+            value="22"
+            min="12"
+            max="72"
+            style="width: 40px"
+          />
           <button id="btn-theme" title="Toggle Dark Mode">🌗</button>
         </div>
       </div>
@@ -248,16 +289,11 @@
           <button id="btn-ask">❓Ask</button>
           <button id="btn-switch-view">🔀 Q&A Mode</button>
         </div>
+        <!-- Kanji Breakdown Section -->
         <div class="button-group">
-          <label for="spin-font-size">Font:</label>
-          <input
-            id="spin-font-size"
-            type="number"
-            value="22"
-            min="12"
-            max="72"
-            style="width: 50px"
-          />
+          <label for="input-breakdown">Kanji Breakdown:</label>
+          <input id="input-breakdown" type="text" placeholder="Select or type..." style="width: 150px;">
+          <button id="btn-breakdown-go" title="Analyze Kanji">➡️</button>
         </div>
       </div>
 
@@ -288,12 +324,39 @@
         </div>
       </div>
     </div>
+    
+    <!-- Kanji Breakdown Modal -->
+    <div id="breakdown-modal" class="modal-backdrop hidden">
+        <div class="modal-content">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+             <h2 style="margin:0;">Kanji Breakdown</h2>
+             <button id="btn-breakdown-close-x" style="border:none; background:transparent; font-size:1.5em; cursor:pointer; color:var(--text-color);">×</button>
+          </div>
+          <div id="breakdown-content" class="modal-body-scroll"></div>
+          <div class="button-group" style="justify-content: flex-end;">
+            <button id="btn-breakdown-copy">📋 Copy</button>
+            <button id="btn-breakdown-close">Close</button>
+          </div>
+        </div>
+      </div>
 
     <script>
       document.addEventListener("DOMContentLoaded", () => {
         const outputArea = document.getElementById("output-area");
+        
+        // History Modal Elements
         const historyModal = document.getElementById("history-modal");
         const historyTextarea = document.getElementById("history-textarea");
+        
+        // Breakdown Modal Elements
+        const breakdownModal = document.getElementById("breakdown-modal");
+        const breakdownContent = document.getElementById("breakdown-content");
+        const breakdownInput = document.getElementById("input-breakdown");
+        const btnBreakdownGo = document.getElementById("btn-breakdown-go");
+        const btnBreakdownCopy = document.getElementById("btn-breakdown-copy");
+        const btnBreakdownClose = document.getElementById("btn-breakdown-close");
+        const btnBreakdownCloseX = document.getElementById("btn-breakdown-close-x");
+
         const aiServiceSelect = document.getElementById("select-ai-service");
         const autoActionSelect = document.getElementById("select-auto-action");
         const fontSizeInput = document.getElementById("spin-font-size");
@@ -305,6 +368,7 @@
         const LS_KEY_AUTO_ACTION = "jp_vocab_auto_action";
         const LS_KEY_AI_SERVICE = "jp_vocab_ai_service";
         const LS_KEY_THEME = "jp_vocab_theme";
+        const LS_KEY_FONT_SIZE = "jp_vocab_font_size";
 
         // --- Theme Handling ---
         const applyTheme = (theme) => {
@@ -312,7 +376,6 @@
           localStorage.setItem(LS_KEY_THEME, theme);
         };
 
-        // Initialize Theme (Check LS, then System Preference)
         const savedTheme = localStorage.getItem(LS_KEY_THEME);
         if (savedTheme) {
           applyTheme(savedTheme);
@@ -326,6 +389,8 @@
         };
 
         // --- Font Size Initialization ---
+        const savedFontSize = localStorage.getItem(LS_KEY_FONT_SIZE);
+        if (savedFontSize) fontSizeInput.value = savedFontSize;
         outputArea.style.fontSize = `${fontSizeInput.value}px`;
 
         // Initialize Auto-Action from LS
@@ -389,16 +454,12 @@
                     }
                 }
             } catch (e) {
-                // Ignore errors (server might be down momentarily)
             }
         };
-
-        // Poll every 5 seconds
         setInterval(checkSystemStatus, 5000);
 
         const getSelectedApiServiceDisplayName = () => aiServiceSelect.value;
 
-        // Sync frontend settings to backend on connection
         const syncBackendConfig = () => {
             console.log("Syncing configuration to backend...");
             api.post("/api/config/auto_action", {
@@ -416,7 +477,6 @@
         const render = () => {
           let textContent;
 
-          // Handle Visual State for Q&A Mode
           if (state.show_qanda) {
             textContent = `${state.question.trim()}\n\n${state.response}`;
             btnSwitchView.classList.add("qanda-mode-active-btn");
@@ -434,23 +494,10 @@
             }
 
             function cleanTranslation(s) {
-              if (!s) {
-                return "";
-              }
-
+              if (!s) return "";
               const replacePairs = [
-                [
-                  `
-Definition: `,
-                  " - ",
-                ],
-                [
-                  `
-
-`,
-                  `
-`,
-                ],
+                [`\nDefinition: `, " - "],
+                [`\n\n`, `\n`],
               ];
               let newString = s;
               for (const [find, replace] of replacePairs) {
@@ -465,13 +512,7 @@ Definition: `,
               state.definitions,
               cleanTranslation(translationValidation),
             ]
-              .map((s) => {
-                if (s) {
-                  return s.trim()
-                } else {
-                  return s
-                }
-              })
+              .map((s) => (s ? s.trim() : s))
               .filter(Boolean)
               .join("\n\n");
           }
@@ -513,7 +554,6 @@ Definition: `,
           socket.onopen = () => {
             console.log("WebSocket connected");
             syncBackendConfig();
-            // Perform an initial status check on connection
             checkSystemStatus();
           };
 
@@ -521,6 +561,7 @@ Definition: `,
             console.log("WebSocket disconnected. Reconnecting in 3 seconds...");
             stopTitleAnimation();
             outputArea.classList.remove("processing-active");
+            btnBreakdownGo.classList.remove("loading-spinner");
             setTimeout(setupWebSocket, 3000);
           };
 
@@ -539,7 +580,16 @@ Definition: `,
                 sentence: update_sentence,
                 token,
               } = message.payload;
-              if (update_sentence === state.sentence) {
+              
+              if (update_type === "kanji_breakdown") {
+                  // Direct stream to modal
+                  breakdownModal.classList.remove("hidden");
+                  breakdownContent.innerText += token;
+                  // Auto scroll to bottom
+                  breakdownContent.scrollTop = breakdownContent.scrollHeight;
+              }
+              // Normal Updates
+              else if (update_sentence === state.sentence) {
                 const newState = { ...state };
                 if (update_type === "translate") newState.translation += token;
                 else if (update_type === "translation_validation")
@@ -556,9 +606,13 @@ Definition: `,
               if (message.payload === "START") {
                 startTitleAnimation();
                 outputArea.classList.add("processing-active");
-              } else {
+              } else if (message.payload === "END") {
                 stopTitleAnimation();
                 outputArea.classList.remove("processing-active");
+              } else if (message.payload === "START_BREAKDOWN") {
+                 btnBreakdownGo.classList.add("loading-spinner");
+              } else if (message.payload === "END_BREAKDOWN") {
+                 btnBreakdownGo.classList.remove("loading-spinner");
               }
             }
           };
@@ -628,28 +682,22 @@ Definition: `,
         document.getElementById("btn-ask").onclick = askQuestion;
 
         outputArea.addEventListener("keydown", (event) => {
-          // Using Shift+Enter for consistency with the original app's bindings
           if (event.key === "Enter" && event.shiftKey) {
             event.preventDefault();
             askQuestion();
           }
         });
 
-        // Toggle polling based on focus to prevent clipboard conflicts
+        // Toggle polling based on focus
         outputArea.addEventListener("focus", () => {
-          console.log("Text area focused, disabling polling.");
           api.post("/api/config/clipboard_monitoring", { enabled: false });
         });
 
         outputArea.addEventListener("blur", () => {
-          console.log("Text area blurred, enabling polling.");
           api.post("/api/config/clipboard_monitoring", { enabled: true });
         });
 
         window.addEventListener("blur", () => {
-          console.log("Window lost focus, ensuring polling is enabled.");
-          // When the user leaves the page, it's very likely to copy text.
-          // Force polling to be on.
           api.post("/api/config/clipboard_monitoring", { enabled: true });
         });
 
@@ -664,8 +712,10 @@ Definition: `,
             api.post("/api/config/auto_action", { value: autoActionSelect.value });
         };
 
-        fontSizeInput.onchange = () =>
-          (outputArea.style.fontSize = `${fontSizeInput.value}px`);
+        fontSizeInput.onchange = () => {
+            outputArea.style.fontSize = `${fontSizeInput.value}px`;
+            localStorage.setItem(LS_KEY_FONT_SIZE, fontSizeInput.value);
+        }
 
         document.getElementById("btn-history").onclick = async () => {
           const data = await api.get("/api/history");
@@ -682,6 +732,56 @@ Definition: `,
         };
         document.getElementById("btn-history-cancel").onclick = () =>
           historyModal.classList.add("hidden");
+          
+        // --- Kanji Breakdown Logic ---
+        const triggerBreakdown = () => {
+            let text = breakdownInput.value.trim();
+            if (!text) {
+                // Try selection
+                const selection = window.getSelection().toString().trim();
+                if (selection) {
+                    text = selection;
+                    breakdownInput.value = text;
+                }
+            }
+            
+            if (!text) {
+                // Flash input red if empty
+                breakdownInput.style.borderColor = "red";
+                setTimeout(() => breakdownInput.style.borderColor = "", 500);
+                return;
+            }
+            
+            // Clear previous results
+            breakdownContent.innerText = "";
+            breakdownModal.classList.remove("hidden");
+            
+            api.post("/api/action/breakdown", { text: text });
+        };
+
+        btnBreakdownGo.onclick = triggerBreakdown;
+        breakdownInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") triggerBreakdown();
+        });
+        
+        // Breakdown Modal Actions
+        const closeBreakdown = () => breakdownModal.classList.add("hidden");
+        btnBreakdownClose.onclick = closeBreakdown;
+        btnBreakdownCloseX.onclick = closeBreakdown;
+        
+        btnBreakdownCopy.onclick = () => {
+            const text = breakdownContent.innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = btnBreakdownCopy.innerText;
+                btnBreakdownCopy.innerText = "✅ Copied!";
+                setTimeout(() => btnBreakdownCopy.innerText = originalText, 1500);
+            });
+        };
+        
+        // Handle modal backdrop click to close
+        breakdownModal.addEventListener("click", (e) => {
+            if (e.target === breakdownModal) closeBreakdown();
+        });
 
         // --- Initial Setup ---
         populateAiServices();

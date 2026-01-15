@@ -64,7 +64,7 @@ is_json_schema_strict = false
 api_key = ""
 # Pick one of the values from https://ai.google.dev/gemini-api/docs/models/gemini
 # Mind the quota limits if you're using a higher quality model
-api_model = "gemini-1.5-flash"
+api_model = "gemini-3-flash-preview"
 system_prompt = """Respond directly with only the requested information.
 Do not add any conversational elements, greetings, or explanations.
 Use examples provided as a guide and follow the pattern to complete the task."""
@@ -131,6 +131,13 @@ third_temperature = 1.0
 q_and_a_prompt_filepath = "prompts/q_and_a.txt"
 temperature = 0.0
 stopping_strings = ["</answer>", "</task>", "</|", "<|"]
+
+[kanji_breakdown]
+prompt_filepath = "prompts/kanji_breakdown.txt"
+# You can select a specific model for this task, e.g., "openai_1", "Gemini", "Claude"
+api_service = "Gemini"
+temperature = 0.3
+stopping_strings = ["</task>", "</|", "<|end|>"]
 
 [ui]
 # You can set the behavior of the translate, analyze and define buttons.

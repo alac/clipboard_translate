@@ -1,0 +1,16 @@
+You are a helpful Japanese language expert.
+Please analyze the following phrase and break down the components found within it.
+
+Text:
+${phrase}
+
+First, describe how each component contributes to the meaning of the phrase.
+
+Then, for each significant Kanji in the phase, provide:
+1. The Kanji
+2. Readings (Onyomi and Kunyomi)
+3. Core Meaning
+4. Components/Radicals
+5. 3 Common Vocabulary Compounds containing this Kanji
+
+Format the output clearly for reading.
