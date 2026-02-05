@@ -17,3 +17,4 @@ fastapi
 uvicorn
 python-multipart
 websockets
+google-api-core
