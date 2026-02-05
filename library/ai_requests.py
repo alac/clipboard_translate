@@ -22,12 +22,12 @@ AI_SERVICE_OPENAI_3 = "openai_3"
 AI_SERVICE_OPENAI_4 = "openai_4"
 
 AiServiceType = Literal[
-    AI_SERVICE_CLAUDE,
-    AI_SERVICE_GEMINI,
-    AI_SERVICE_OPENAI_1,
-    AI_SERVICE_OPENAI_2,
-    AI_SERVICE_OPENAI_3,
-    AI_SERVICE_OPENAI_4,
+    "Claude",
+    "Gemini",
+    "openai_1",
+    "openai_2",
+    "openai_3",
+    "openai_4",
 ]
 
 AI_SERVICES_DISPLAY_NAME = {}
@@ -68,6 +68,21 @@ def ai_services_display_names_reverse_map():
     elif len(AI_SERVICES_DISPLAY_NAME.items()) == 0:
         _populate_display_names_map()
     return AI_SERVICES_DISPLAY_NAME_REVERSE
+
+
+def get_default_api_choice() -> str:
+    return settings.get_setting('ai_settings.api')
+
+
+def get_default_model_choice() -> str:
+    api_choice = settings.get_setting('ai_settings.api')
+    if api_choice.startswith("openai"):
+        return settings.get_setting(api_choice + '.model')
+    elif api_choice == "Claude":
+        return settings.get_setting('claude_api.model')
+    elif api_choice == "Gemini":
+        return settings.get_setting('api_model.model')
+    raise ValueError(f"Invalid ai_settings.api setting {api_choice}")
 
 
 http = urllib3.PoolManager(
