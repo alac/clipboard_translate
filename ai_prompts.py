@@ -101,6 +101,10 @@ def stream_with_stats(
             if len(last_tokens) == 40 and len(set(last_tokens)) <= 3:
                 logging.warning(f"AI generated exited because of looping response: {last_tokens}")
                 return None
+    except Exception as e:
+        logging.error(f"Exception: {e}")
+        if update_queue is not None:
+            update_queue.put(UIUpdateCommand(update_type, sentence, f"\nEXCEPTION: {e}"))
     finally:
         stats.stop()
         printer_thread.join()
