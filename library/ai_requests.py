@@ -11,6 +11,8 @@ from typing import Optional, Union, Type, get_args, get_origin, Any, Callable, L
 import inspect
 import anthropic
 import google.api_core.exceptions
+import threading
+import re
 
 from library.settings_manager import settings, ROOT_FOLDER
 
@@ -119,10 +121,14 @@ def run_ai_request(
         ban_eos_token: bool = True,
         print_prompt=True,
         api_override: Optional[str] = None,
+        model_override: Optional[str] = None,
         print_output=False):
     result = ""
-    for tok in run_ai_request_stream(prompt, custom_stopping_strings, temperature, max_response,
-                                     ban_eos_token, print_prompt, api_override, print_output):
+    for tok in run_ai_request_stream(prompt=prompt, custom_stopping_strings=custom_stopping_strings,
+                                     temperature=temperature, max_response=max_response,
+                                     ban_eos_token=ban_eos_token, print_prompt=print_prompt,
+                                     api_override=api_override, model_override=model_override,
+                                     print_output=print_output):
         result += tok
     if clean_blank_lines:
         result = "\n".join([line for line in "".join(result).splitlines() if len(line.strip()) > 0])
@@ -139,20 +145,24 @@ def run_ai_request_stream(
         ban_eos_token: bool = True,
         print_prompt=True,
         api_override: Optional[str] = None,
-        print_output=False):
+        model_override: Optional[str] = None,
+        print_output=False,
+        stop_event: Optional[threading.Event] = None):
     def capture_callback(_structured_object: Any):
         pass
 
-    for tok in _run_ai_request_stream(prompt,
-                                      None,
-                                      capture_callback,
-                                      custom_stopping_strings,
-                                      temperature,
-                                      max_response,
-                                      ban_eos_token,
-                                      print_prompt,
-                                      api_override,
-                                      print_output):
+    for tok in _run_ai_request_stream(prompt=prompt,
+                                      base_model=None,
+                                      structured_result_callback=capture_callback,
+                                      custom_stopping_strings=custom_stopping_strings,
+                                      temperature=temperature,
+                                      max_response=max_response,
+                                      ban_eos_token=ban_eos_token,
+                                      print_prompt=print_prompt,
+                                      api_override=api_override,
+                                      model_override=model_override,
+                                      print_output=print_output,
+                                      stop_event=stop_event):
         yield tok
 
 
@@ -165,6 +175,7 @@ def run_ai_request_structured_output(
         ban_eos_token: bool = True,
         print_prompt=True,
         api_override: Optional[str] = None,
+        model_override: Optional[str] = None,
         print_output=False) -> Optional[BaseModel]:
     structured_result = None  # type: Optional[BaseModel]
 
@@ -172,16 +183,17 @@ def run_ai_request_structured_output(
         nonlocal structured_result
         structured_result = structured_object
 
-    for _ in _run_ai_request_stream(prompt,
-                                    base_model,
-                                    capture_callback,
-                                    custom_stopping_strings,
-                                    temperature,
-                                    max_response,
-                                    ban_eos_token,
-                                    print_prompt,
-                                    api_override,
-                                    print_output):
+    for _ in _run_ai_request_stream(prompt=prompt,
+                                    base_model=base_model,
+                                    structured_result_callback=capture_callback,
+                                    custom_stopping_strings=custom_stopping_strings,
+                                    temperature=temperature,
+                                    max_response=max_response,
+                                    ban_eos_token=ban_eos_token,
+                                    print_prompt=print_prompt,
+                                    api_override=api_override,
+                                    model_override=model_override,
+                                    print_output=print_output):
         pass
 
     return structured_result
@@ -197,11 +209,13 @@ def _run_ai_request_stream(
         ban_eos_token: bool = True,
         print_prompt=True,
         api_override: Optional[str] = None,
-        print_output=False):
+        model_override: Optional[str] = None,
+        print_output=False,
+        stop_event: Optional[threading.Event] = None):
     api_choice = settings.get_setting('ai_settings.api')
 
     if print_prompt:
-        print(prompt)
+        logging.getLogger("ai_requests").debug(prompt)
 
     if api_override:
         api_choice = api_override
@@ -209,46 +223,53 @@ def _run_ai_request_stream(
         is_chat_completions = settings.get_setting(api_choice + '.is_chat_completion')
         if is_chat_completions:
             for tok in run_ai_request_openai_chat_style(
-                    prompt,
-                    api_choice,
-                    base_model,
-                    structured_result_callback,
-                    custom_stopping_strings,
-                    temperature,
-                    max_response,
-                    print_prompt,
-                    print_output):
+                    prompt=prompt,
+                    api_choice=api_choice,
+                    base_model=base_model,
+                    structured_result_callback=structured_result_callback,
+                    custom_stopping_strings=custom_stopping_strings,
+                    temperature=temperature,
+                    max_response=max_response,
+                    print_prompt=print_prompt,
+                    print_output=print_output,
+                    model_override=model_override,
+                    stop_event=stop_event):
                 yield tok
         else:
             for tok in run_ai_request_openai_style(
-                    prompt,
-                    api_choice,
-                    base_model,
-                    structured_result_callback,
-                    custom_stopping_strings,
-                    temperature,
-                    max_response,
-                    ban_eos_token,
-                    print_prompt,
-                    print_output):
+                    prompt=prompt,
+                    api_choice=api_choice,
+                    base_model=base_model,
+                    structured_result_callback=structured_result_callback,
+                    custom_stopping_strings=custom_stopping_strings,
+                    temperature=temperature,
+                    max_response=max_response,
+                    ban_eos_token=ban_eos_token,
+                    print_prompt=print_prompt,
+                    print_output=print_output,
+                    model_override=model_override,
+                    stop_event=stop_event):
                 yield tok
     elif api_choice == AI_SERVICE_GEMINI:
         for chunk in run_ai_request_gemini_pro(
-                prompt,
-                base_model,
-                structured_result_callback,
-                custom_stopping_strings,
-                temperature,
-                max_response):
+                prompt=prompt,
+                base_model=base_model,
+                structured_result_callback=structured_result_callback,
+                custom_stopping_strings=custom_stopping_strings,
+                temperature=temperature,
+                max_response=max_response,
+                model_override=model_override):
             yield chunk
     elif api_choice == AI_SERVICE_CLAUDE:  # Add Claude case
         for chunk in run_ai_request_claude(
-                prompt,
-                base_model,
-                structured_result_callback,
-                custom_stopping_strings,
-                temperature,
-                max_response):
+                prompt=prompt,
+                base_model=base_model,
+                structured_result_callback=structured_result_callback,
+                custom_stopping_strings=custom_stopping_strings,
+                temperature=temperature,
+                max_response=max_response,
+                model_override=model_override,
+                stop_event=stop_event):
             yield chunk
     else:
         logging.error(f"{api_choice} is unsupported for the setting ai_settings.api")
@@ -265,12 +286,16 @@ def run_ai_request_openai_style(
         max_response: int = 2048,
         ban_eos_token: bool = True,
         print_prompt=True,
-        print_output=False):
+        print_output=False,
+        model_override: Optional[str] = None,
+        stop_event: Optional[threading.Event] = None):
     request_url = settings.get_setting(api_choice + '.request_url')
     api_key = settings.get_setting(api_choice + '.api_key')
     system_prompt = settings.get_setting(api_choice + '.system_prompt')
     preset_name = settings.get_setting(api_choice + '.preset_name')
     model = settings.get_setting(api_choice + '.model')
+    if model_override:
+        model = model_override
     json_schema = None
     if base_model:
         is_json_schema_strict = settings.get_setting(api_choice + '.is_json_schema_strict')
@@ -322,9 +347,11 @@ def run_ai_request_openai_style(
 
     full_text = ""
     if print_prompt:
-        print(data['prompt'], end='')
+        logging.getLogger("ai_requests").debug(data['prompt'])
     with open(os.path.join(ROOT_FOLDER, "response.txt"), "w", encoding='utf-8') as f:
         for event in client.events():
+            if stop_event and stop_event.is_set():
+                break
             if event.data == "[DONE]":
                 break
             payload = json.loads(event.data)
@@ -333,7 +360,7 @@ def run_ai_request_openai_style(
             new_text = payload['choices'][0]['text']
             f.write(new_text)
             if print_output:
-                print(new_text, end="")
+                logging.getLogger("ai_requests").debug(new_text)
             full_text += new_text
             yield new_text
 
@@ -342,7 +369,7 @@ def run_ai_request_openai_style(
             structured_object = base_model.model_validate_json(full_text)
             structured_result_callback(structured_object)
         except ValidationError as e:
-            print(f"Unpacking Pydantic model failed. Full text:\n---\n{full_text}\n---\n")
+            logging.getLogger("ai_requests").debug(f"Unpacking Pydantic model failed. Full text:\n---\n{full_text}\n---\n")
             raise e
 
 
@@ -355,11 +382,16 @@ def run_ai_request_openai_chat_style(
         temperature: float = .1,
         max_response: int = 2048,
         print_prompt=True,
-        print_output=False):
+        print_output=False,
+        model_override: Optional[str] = None,
+        stop_event: Optional[threading.Event] = None):
     request_url = settings.get_setting(api_choice + '.request_url')
     api_key = settings.get_setting(api_choice + '.api_key')
     system_prompt = settings.get_setting(api_choice + '.system_prompt')
     model = settings.get_setting(api_choice + '.model')
+    include_reasoning = settings.get_setting('ai_settings.include_reasoning', False)
+    if model_override:
+        model = model_override
     json_schema = None
     if base_model:
         json_schema = base_model.model_json_schema()
@@ -403,34 +435,79 @@ def run_ai_request_openai_chat_style(
     full_text = ""
     if print_prompt:
         for message in messages:
-            print(f"--- ROLE: {message['role']} ---\n{message['content']}")
-        print("--- ROLE: assistant ---")
+            logging.getLogger("ai_requests").debug(f"--- ROLE: {message['role']} ---\n{message['content']}")
+        logging.getLogger("ai_requests").debug("--- ROLE: assistant ---")
 
+    is_thinking = False
     with open(os.path.join(ROOT_FOLDER, "response.txt"), "w", encoding='utf-8') as f:
         for event in client.events():
+            if stop_event and stop_event.is_set():
+                break
             if event.data == "[DONE]":
                 break
-            # print(event.data)
+
             payload = json.loads(event.data)
             if 'error' in payload:
                 raise ValueError(payload)
+
             choice = payload['choices'][0]
-            new_text = choice.get('delta', {}).get('content')
-            if new_text:
-                f.write(new_text)
+            delta = choice.get('delta', {})
+
+            # 1. Handle Reasoning Tokens (NanoGPT / DeepSeek via API)
+            # Some providers use 'reasoning', others 'reasoning_content'
+            reasoning_chunk = delta.get('reasoning') or delta.get('reasoning_content')
+            if reasoning_chunk and include_reasoning:
+                if not is_thinking:
+                    # Start of thinking block
+                    tag = "<think>\n"
+                    f.write(tag)
+                    if print_output:
+                        logging.getLogger("ai_requests").debug(tag)
+                    full_text += tag
+                    yield tag
+                    is_thinking = True
+
+                f.write(reasoning_chunk)
                 if print_output:
-                    print(new_text, end="")
-                full_text += new_text
-                yield new_text
+                    logging.getLogger("ai_requests").debug(reasoning_chunk)
+                full_text += reasoning_chunk
+                yield reasoning_chunk
+
+            # 2. Handle Content Tokens
+            content_chunk = delta.get('content')
+            if content_chunk:
+                # If we were thinking, we must close the tag before emitting content
+                if is_thinking:
+                    tag = "\n</think>\n"
+                    f.write(tag)
+                    if print_output:
+                        logging.getLogger("ai_requests").debug(tag)
+                    full_text += tag
+                    yield tag
+                    is_thinking = False
+
+                f.write(content_chunk)
+                if print_output:
+                    logging.getLogger("ai_requests").debug(content_chunk)
+                full_text += content_chunk
+                yield content_chunk
+
             if choice.get('finish_reason') in ['stop', 'length']:
                 break
+
+        # Safety: If stream ends while still "thinking", close the tag
+        if is_thinking:
+            tag = "\n</think>\n"
+            f.write(tag)
+            full_text += tag
+            yield tag
 
     if base_model:
         try:
             structured_object = base_model.model_validate_json(full_text)
             structured_result_callback(structured_object)
         except ValidationError as e:
-            print(f"Unpacking Pydantic model failed. Full text:\n---\n{full_text}\n---\n")
+            logging.getLogger("ai_requests").debug(f"Unpacking Pydantic model failed. Full text:\n---\n{full_text}\n---\n")
             raise e
 
 
@@ -440,10 +517,14 @@ def run_ai_request_gemini_pro(
         structured_result_callback: Callable[[Any], None],
         custom_stopping_strings: Optional[list[str]] = None,
         temperature: float = .1,
-        max_response: int = 2048):
+        max_response: int = 2048,
+        model_override: Optional[str] = None):
     if len(custom_stopping_strings) > 5:
         custom_stopping_strings = custom_stopping_strings[:5]
 
+    model = settings.get_setting('gemini_pro_api.api_model')
+    if model_override:
+        model = model_override
     response_type = 'application/json' if base_model else None
     response_schema = create_strict_schema(base_model) if base_model else None
     system_prompt = settings.get_setting('gemini_pro_api.system_prompt')
@@ -451,7 +532,7 @@ def run_ai_request_gemini_pro(
     try:
         client = google_genai.Client(api_key=settings.get_setting('gemini_pro_api.api_key'))
         response = client.models.generate_content(
-            model=settings.get_setting('gemini_pro_api.api_model'),
+            model=model,
             contents=system_prompt + "\n" + prompt,
             config={
                 'response_mime_type': response_type,
@@ -480,13 +561,13 @@ def run_ai_request_gemini_pro(
             },
         )
     except google.api_core.exceptions.ResourceExhausted as e:
-        print(f"Gemini rate limit encountered: {e}")
+        logging.getLogger("ai_requests").debug(f"Gemini rate limit encountered: {e}")
         retry_delay = None
         if hasattr(e, 'retry_info') and e.retry_info:
             retry_delay = e.retry_info.retry_delay
         raise RateLimitError(retry_delay)
 
-    print(response.text)
+    logging.getLogger("ai_requests").debug(response.text)
 
     with open(os.path.join(ROOT_FOLDER, "response.txt"), "w", encoding='utf-8') as f:
         f.write(response.text)
@@ -494,10 +575,10 @@ def run_ai_request_gemini_pro(
     if base_model:
         if response.parsed:
             structured_result_callback(response.parsed)
-            print("HAD RESPONSE PARSED")
+            logging.getLogger("ai_requests").debug("HAD RESPONSE PARSED")
         else:
             structured_result_callback(base_model.model_validate_json(response.text))
-            print("DID NOT HAVE RESPONSE PARSED")
+            logging.getLogger("ai_requests").debug("DID NOT HAVE RESPONSE PARSED")
 
     return response.text
 
@@ -508,11 +589,15 @@ def run_ai_request_claude(
         structured_result_callback: Callable[[Any], None],
         custom_stopping_strings: Optional[list[str]] = None,
         temperature: float = .1,
-        max_response: int = 2048):
+        max_response: int = 2048,
+        model_override: Optional[str] = None,
+        stop_event: Optional[threading.Event] = None):
     """Run request using Claude Sonnet API with streaming support."""
 
     api_key = settings.get_setting('claude_api.api_key')
     model = settings.get_setting('claude_api.model', 'claude-3-sonnet-20240229')
+    if model_override:
+        model = model_override
     system_prompt = settings.get_setting('claude_api.system_prompt', '')
 
     # Initialize the Anthropic client
@@ -546,7 +631,9 @@ def run_ai_request_claude(
 
             with open(os.path.join(ROOT_FOLDER, "response.txt"), "w", encoding='utf-8') as f:
                 for text in stream.text_stream:
-                    print(text, end="")
+                    if stop_event and stop_event.is_set():
+                        break
+                    logging.getLogger("ai_requests").debug(text)
                     f.write(text)
                     full_text += text
                     yield text
@@ -557,7 +644,7 @@ def run_ai_request_claude(
                 structured_object = base_model.model_validate_json(full_text)
                 structured_result_callback(structured_object)
             except ValidationError as e:
-                print(f"Unpacking Pydantic model failed. Full text:\n---\n{full_text}\n---\n")
+                logging.getLogger("ai_requests").debug(f"Unpacking Pydantic model failed. Full text:\n---\n{full_text}\n---\n")
                 raise e
 
     except anthropic.RateLimitError as e:
@@ -619,50 +706,20 @@ def create_strict_schema(model: Type[BaseModel]) -> Type[BaseModel]:
     )
 
 
-if __name__ == "__main__":
-    class Capital(BaseModel):
-        name: str
+def extract_reasoning(text: str) -> tuple[str | None, str]:
+    """
+    Extracts content inside <think> tags.
+    Returns (reasoning_string, clean_json_string)
+    """
+    # Regex to find <think> content </think> (dotall to match newlines)
+    match = re.search(r"<think>(.*?)</think>", text, re.DOTALL)
 
+    reasoning = None
+    clean_text = text
 
-    output = run_ai_request_structured_output(
-        "What is the capital of france? Provide the answer as a json with the key 'name'.\n",
-        Capital,
-        ['```'],
-        .1,
-        200,
-        False,
-        False,
-        AI_SERVICE_OPENAI_1)
-    print(output)
+    if match:
+        reasoning = match.group(1).strip()
+        # Remove the thinking block from the text to get pure JSON
+        clean_text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
-    output = run_ai_request_structured_output(
-        "What is the capital of france?\n",
-        Capital,
-        ['```'],
-        .1,
-        200,
-        False,
-        False,
-        AI_SERVICE_OPENAI_1)
-    print(output)
-
-    output = run_ai_request_structured_output(
-        "What is the capital of france? Provide the answer as a json with the key 'name'.\n```json",
-        Capital,
-        ['```'],
-        .1,
-        200,
-        False,
-        False,
-        AI_SERVICE_OPENAI_1)
-    print(output)
-
-    for token in run_ai_request_stream(
-            "What is the capital of france?",
-            ['\n'],
-            .1,
-            200,
-            False,
-            False,
-            AI_SERVICE_OPENAI_1):
-        print(token, end=None)
+    return reasoning, clean_text
