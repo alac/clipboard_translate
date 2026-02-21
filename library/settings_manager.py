@@ -138,16 +138,16 @@ class SettingsManager:
             for fpath in files_to_check:
                 if self._has_changed(fpath):
                     changed = True
-                    print(f"[SettingsManager] detected change in {os.path.basename(str(fpath))}...")
+                    logging.getLogger("settings_manager").info(f"[SettingsManager] detected change in {os.path.basename(str(fpath))}...")
 
             if changed:
                 try:
                     # Small sleep to allow file write to complete (prevents reading empty files)
                     time.sleep(0.1)
                     self._load_from_disk()
-                    print("[SettingsManager] Hot reload complete.")
+                    logging.getLogger("settings_manager").info("[SettingsManager] Hot reload complete.")
                 except Exception as e:
-                    print(f"[SettingsManager] Hot reload failed (invalid TOML?): {e}")
+                    logging.getLogger("settings_manager").info(f"[SettingsManager] Hot reload failed (invalid TOML?): {e}")
 
 
 def search_nested_dict(nested_dict: dict, dotted_key: str) -> Any:
