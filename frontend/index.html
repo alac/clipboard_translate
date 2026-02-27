@@ -486,37 +486,56 @@
             outputArea.classList.remove("qanda-mode-active-area");
 
             let translationValidation = state.translation_validation;
-            if (state.config && state.config.hide_thinking && translationValidation) {
-              translationValidation = translationValidation.replace(
-                /<think>[\s\S]*?<\/think>/g,
-                ""
-              );
-            }
-
             function cleanTranslation(s) {
               if (!s) return "";
               const replacePairs = [
-                [`\nDefinition: `, " - "],
                 [`\n\n`, `\n`],
+                [`  * `, `  - `],
+                [`*`, ``],
               ];
               let newString = s;
               for (const [find, replace] of replacePairs) {
                 newString = newString.replaceAll(find, replace);
               }
-              return newString;
+              const regex = /\n\s*(?:[-*•+]\s*)?Definition:\s*(.*)/gi;
+              return newString.replace(regex, ' - $1');
+            }
+            function cleanThinking(s) {
+              if (!s) return "";
+              s = s.trim();
+              if (state.config && state.config.hide_thinking) {
+                // if it ends with the think tag, returning the reasoning is better than nothing
+                if (s.endsWith("<\/think>")) {
+                  return s.replace(
+                    /<\/think>/g,
+                    ""
+                  );
+                }
+                // if it contains the think tag, trim the thinking off
+                if (s.includes("<\/think>")) {
+                  if (!s.includes("<think>")) {
+                    s = "<think>" + s
+                  };
+                  s = s.replace(
+                    /<think>[\s\S]*?<\/think>/g,
+                    ""
+                  );
+                  return s;
+                }
+              }
+              return s;
             }
 
             textContent = [
               state.sentence,
-              cleanTranslation(state.translation),
-              state.definitions,
-              cleanTranslation(translationValidation),
+              cleanThinking(cleanTranslation(state.translation)),
+              cleanThinking(state.definitions),
+              cleanThinking(cleanTranslation(translationValidation)),
             ]
               .map((s) => (s ? s.trim() : s))
               .filter(Boolean)
               .join("\n\n");
           }
-
           if (outputArea.innerText !== textContent) {
             outputArea.innerText = textContent;
           }
