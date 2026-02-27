@@ -289,6 +289,9 @@ def run_ai_request_openai_style(
         print_output=False,
         model_override: Optional[str] = None,
         stop_event: Optional[threading.Event] = None):
+    if settings.get_setting('general.add_empty_think', False):
+        prompt += "<think>\n\n</think>"
+
     request_url = settings.get_setting(api_choice + '.request_url')
     api_key = settings.get_setting(api_choice + '.api_key')
     system_prompt = settings.get_setting(api_choice + '.system_prompt')
@@ -392,18 +395,9 @@ def run_ai_request_openai_chat_style(
     include_reasoning = settings.get_setting('ai_settings.include_reasoning', False)
     if model_override:
         model = model_override
-    json_schema = None
-    if base_model:
-        json_schema = base_model.model_json_schema()
-
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": prompt})
 
     data = {
         "model": model,
-        "messages": messages,
         "stream": True,
         "temperature": temperature,
         "max_tokens": max_response,
@@ -413,6 +407,19 @@ def run_ai_request_openai_chat_style(
         "stop": custom_stopping_strings,
         "n": 1,
     }
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+    if settings.get_setting('general.add_empty_think', False):
+        messages.append({"role": "assistant", "content": "<think>\n\n</think>"})
+        data["continue_final_message"] = True
+    data["messages"] = messages
+
+    json_schema = None
+    if base_model:
+        json_schema = base_model.model_json_schema()
     if json_schema:
         data['response_format'] = {"type": "json_schema", "json_schema": json_schema}
 
@@ -433,6 +440,7 @@ def run_ai_request_openai_chat_style(
     client = sseclient.SSEClient(response)
 
     full_text = ""
+    json_text = ""
     if print_prompt:
         for message in messages:
             logging.getLogger("ai_requests").debug(f"--- ROLE: {message['role']} ---\n{message['content']}")
@@ -490,6 +498,7 @@ def run_ai_request_openai_chat_style(
                 if print_output:
                     logging.getLogger("ai_requests").debug(content_chunk)
                 full_text += content_chunk
+                json_text += content_chunk
                 yield content_chunk
 
             if choice.get('finish_reason') in ['stop', 'length']:
@@ -504,7 +513,8 @@ def run_ai_request_openai_chat_style(
 
     if base_model:
         try:
-            structured_object = base_model.model_validate_json(full_text)
+            clean_json_text = re.sub(r'<think>.*?</think>', '', json_text, flags=re.DOTALL).strip()
+            structured_object = base_model.model_validate_json(clean_json_text)
             structured_result_callback(structured_object)
         except ValidationError as e:
             logging.getLogger("ai_requests").debug(f"Unpacking Pydantic model failed. Full text:\n---\n{full_text}\n---\n")
