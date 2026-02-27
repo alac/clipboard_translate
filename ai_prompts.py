@@ -269,7 +269,7 @@ def translate_with_context(history, sentence, temp=None, style="",
                                          print_prompt=False,
                                          temperature=temp,
                                          ban_eos_token=False,
-                                         max_response=100,
+                                         max_response=4000,
                                          api_override=api_override)
     return stream_with_stats(token_stream, sentence, update_queue, "translate")
 
@@ -330,7 +330,7 @@ def translate_with_context_cot(history, sentence, temp=None,
                                          print_prompt=False,
                                          temperature=temp,
                                          ban_eos_token=False,
-                                         max_response=3000,
+                                         max_response=10000,
                                          api_override=api_override)
     result = stream_with_stats(token_stream, sentence, update_queue, update_token_key)
 
@@ -402,7 +402,7 @@ def ask_question(question: str, sentence: str, history: list[str], temp: Optiona
                                          print_prompt=False,
                                          temperature=temp,
                                          ban_eos_token=False,
-                                         max_response=1000,
+                                         max_response=10000,
                                          api_override=api_override)
     return stream_with_stats(token_stream, sentence, update_queue, update_token_key)
 
