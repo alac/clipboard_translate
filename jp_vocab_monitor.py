@@ -243,6 +243,7 @@ class VocabMonitorService:
                 if self.last_command.command_type == "qanda":
                     self.ui_response = ""
                 self.show_qanda = self.last_command.command_type == "qanda"
+                self.ui_update_queue.put(UIUpdateCommand("REFRESH_STATE", self.ui_sentence, ""))
                 self.command_queue.put(self.last_command)
 
     def stop(self):
@@ -271,14 +272,14 @@ class VocabMonitorService:
 
         if style == TranslationType.Off:
             return
-        elif style in [TranslationType.Define, TranslationType.DefineWithoutAI]:
+        if style in [TranslationType.Define, TranslationType.DefineWithoutAI, TranslationType.DefineAndChainOfThought]:
             self.ui_definitions = ""
-        elif style in [TranslationType.Translate, TranslationType.BestOfThree, TranslationType.ChainOfThought,
-                       TranslationType.DefineAndChainOfThought, TranslationType.TranslateAndChainOfThought]:
+        if style in [TranslationType.Translate, TranslationType.BestOfThree, TranslationType.TranslateAndChainOfThought]:
             self.ui_translation = ""
+        if style in [TranslationType.ChainOfThought, TranslationType.TranslateAndChainOfThought,
+                     TranslationType.DefineAndChainOfThought]:
             self.ui_translation_validation = ""
-        else:
-            raise ValueError(f"Unhandled 'TranslationType': {style}")
+        self.ui_update_queue.put(UIUpdateCommand("REFRESH_STATE", self.ui_sentence, ""))
 
         self.total_ai_requests += 1
 

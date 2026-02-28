@@ -76,7 +76,13 @@ async def queue_poller():
             if not update_command:
                 continue
 
-            if update_command.update_type == "NEW_SENTENCE":
+            if update_command.update_type == "REFRESH_STATE":
+                message = {
+                    "event": "STATE_UPDATE",
+                    "payload": service.get_state()
+                }
+                await manager.broadcast(json.dumps(message))
+            elif update_command.update_type == "NEW_SENTENCE":
                 message = {
                     "event": "STATE_UPDATE",
                     "payload": service.get_state()
