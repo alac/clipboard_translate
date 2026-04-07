@@ -313,6 +313,8 @@ def translate_with_context_cot(history, sentence, temp=None,
             else:
                 readings_string = "\nSuggested Readings:" + suggested_readings + "\n"
             print(f"{ANSIColors.INVERSE}{readings_string}{ANSIColors.END}")
+        if "(" in sentence and ")" in sentence:
+            sentence = sentence.replace("(","").replace(")","")
         template_data = {
             'examples': examples,
             'context': context,
