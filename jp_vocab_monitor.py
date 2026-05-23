@@ -12,7 +12,7 @@ from collections import Counter
 
 import pyperclip
 from ai_prompts import (UIUpdateCommand, run_vocabulary_list, translate_with_context, translate_with_context_cot,
-                        request_interrupt_atomic_swap, ask_question, should_generate_vocabulary_list,
+                        increment_request_gen, ask_question, should_generate_vocabulary_list,
                         is_request_ongoing, generate_tts, run_kanji_breakdown)
 from library.rate_limiter import RateLimiter
 from library.settings_manager import settings
@@ -39,8 +39,10 @@ class InvalidTranslationTypeException(Exception):
 
 class MonitorCommand:
     def __init__(self, command_type: str, sentence: str, history: list[str], prompt: str = None,
-                 temp: Optional[float] = None, style: str = None, index: int = 0, api_override: Optional[str] = None,
-                 update_token_key: Optional[str] = None, include_readings: bool = False):
+                 temp: Optional[float] = None, style: str = None, index: int = 0, 
+                 api_override: Optional[str] = None, model_override: Optional[str] = None,
+                 update_token_key: Optional[str] = None, include_readings: bool = False,
+                 tab_index: int = 0):
         self.command_type = command_type
         self.sentence = sentence
         self.history = history
@@ -49,20 +51,22 @@ class MonitorCommand:
         self.style = style
         self.index = index
         self.api_override = api_override
+        self.model_override = model_override
         self.update_token_key = update_token_key
         self.include_readings = include_readings
+        self.tab_index = tab_index
 
 
 class HistoryState:
-    def __init__(self, sentence, translation, translation_validation, definitions, question, response,
-                 history, show_qanda):
+    def __init__(self, sentence, translations: dict, translation_validations: dict, definitions: dict, 
+                 question: str, responses: dict, history: list, show_qanda: bool):
         self.ui_sentence = sentence
-        self.ui_translation = translation
-        self.ui_translation_validation = translation_validation
-        self.ui_definitions = definitions
+        self.ui_translations = translations.copy()
+        self.ui_translation_validations = translation_validations.copy()
+        self.ui_definitions = definitions.copy()
         self.ui_question = question
-        self.ui_response = response
-        self.history = history
+        self.ui_responses = responses.copy()
+        self.history = history[:]
         self.show_qanda = show_qanda
 
 
@@ -73,7 +77,7 @@ class VocabMonitorService:
         # --- Queues for threading
         self.command_queue = SimpleQueue()
         self.ui_update_queue = SimpleQueue()
-        self.last_command = None
+        self.last_commands = []
 
         # --- Application State
         self.history = []
@@ -87,13 +91,16 @@ class VocabMonitorService:
         self.total_copied_lines = 0
         self.total_ai_requests = 0
 
-        # --- UI Data State (managed by the service)
+        # Tab Configs
+        self.tab_configs = [{"api_service": settings.get_setting("ai_settings.api"), "model_override": ""}]
+
+        # --- UI Data State (managed by the service per tab)
         self.ui_sentence = ""
-        self.ui_translation = ""
-        self.ui_translation_validation = ""
-        self.ui_definitions = ""
+        self.ui_translations = {}
+        self.ui_translation_validations = {}
+        self.ui_definitions = {}
         self.ui_question = ""
-        self.ui_response = ""
+        self.ui_responses = {}
         self.show_qanda = False
 
         # --- Settings & Limits
@@ -103,12 +110,12 @@ class VocabMonitorService:
 
         # Override fields for UI interactions
         self._auto_action_override = None
-        self._ai_service_name_override = None
 
         # Initialize Rate Limiter
         self.check_rate_limiter()
 
         self.max_auto_triggers = settings.get_setting("general.max_auto_triggers", 0)
+        self.workers = []
 
         # --- Load initial data
         self._load_history_from_file()
@@ -126,22 +133,11 @@ class VocabMonitorService:
     def auto_action(self):
         if self._auto_action_override is not None:
             return self._auto_action_override
-        # Ensure we return a value compatible with TranslationType (usually string match is enough)
         return settings.get_setting('ui.auto_action', TranslationType.Off)
 
     @auto_action.setter
     def auto_action(self, value):
         self._auto_action_override = value
-
-    @property
-    def ai_service_name(self):
-        if self._ai_service_name_override is not None:
-            return self._ai_service_name_override
-        return settings.get_setting("ai_settings.api")
-
-    @ai_service_name.setter
-    def ai_service_name(self, value):
-        self._ai_service_name_override = value
 
     def _load_history_from_file(self):
         cache_file = os.path.join("translation_history", f"{self.source}.json")
@@ -157,35 +153,26 @@ class VocabMonitorService:
 
     def start(self):
         """Starts the background threads for processing and clipboard monitoring."""
-        processing_thread = threading.Thread(target=self._processing_thread, args=(self.command_queue,))
-        processing_thread.daemon = True
-        processing_thread.start()
+        # Spawn multiple worker threads for parallel capabilities
+        for _ in range(15):
+            t = threading.Thread(target=self._processing_thread, args=(self.command_queue,))
+            t.daemon = True
+            t.start()
+            self.workers.append(t)
 
         clipboard_thread = threading.Thread(target=self._clipboard_monitor_thread)
         clipboard_thread.daemon = True
         clipboard_thread.start()
 
-    def _debug_dump_history(self):
-        print("Current State:\n")
-        print(self.get_state())
-        print("\n____________\n")
-
-        for i, history_state in enumerate(self.history_states):
-            print(f"#{i} History:\n")
-            print(self.history_states[i].__dict__)
-            print("\n____________\n")
-
-        print(f"Total History {len(self.history_states)}, Current Index {self.history_states_index}")
-
     def get_state(self) -> dict:
         """Returns the current display state for the UI to render."""
         return {
             "sentence": self.ui_sentence,
-            "translation": self.ui_translation,
-            "translation_validation": self.ui_translation_validation,
+            "translations": self.ui_translations,
+            "translation_validations": self.ui_translation_validations,
             "definitions": self.ui_definitions,
             "question": self.ui_question,
-            "response": self.ui_response,
+            "responses": self.ui_responses,
             "show_qanda": self.show_qanda,
             "can_go_previous": self.history_states_index > 0,
             "can_go_next": self.history_states_index < (len(self.history_states) - 1),
@@ -200,14 +187,15 @@ class VocabMonitorService:
             if update_command.sentence != self.ui_sentence:
                 return  # Ignore updates for old sentences
 
+        idx = update_command.tab_index
         if update_command.update_type == "translate":
-            self.ui_translation += update_command.token
+            self.ui_translations[idx] = self.ui_translations.get(idx, "") + update_command.token
         elif update_command.update_type == "translation_validation":
-            self.ui_translation_validation += update_command.token
+            self.ui_translation_validations[idx] = self.ui_translation_validations.get(idx, "") + update_command.token
         elif update_command.update_type == "define":
-            self.ui_definitions += update_command.token
+            self.ui_definitions[idx] = self.ui_definitions.get(idx, "") + update_command.token
         elif update_command.update_type == "qanda":
-            self.ui_response += update_command.token
+            self.ui_responses[idx] = self.ui_responses.get(idx, "") + update_command.token
 
     # --- UI Action Handlers ---
 
@@ -229,171 +217,171 @@ class VocabMonitorService:
 
     def retry(self):
         with self.sentence_lock:
-            if self.last_command:
-                if self.last_command.command_type == "translate":
-                    self.ui_translation = ""
-                    self.ui_translation_validation = ""
-                if self.last_command.command_type == "translate_cot":
-                    if self.last_command.update_token_key == "translate":
-                        self.ui_translation = ""
-                    elif self.last_command.update_token_key == "translation_validation":
-                        self.ui_translation_validation = ""
-                if self.last_command.command_type == "define":
-                    self.ui_definitions = ""
-                if self.last_command.command_type == "qanda":
-                    self.ui_response = ""
-                self.show_qanda = self.last_command.command_type == "qanda"
+            if self.last_commands:
+                # Clear UI components related to the last batch of commands
+                for cmd in self.last_commands:
+                    idx = cmd.tab_index
+                    if cmd.command_type == "translate":
+                        self.ui_translations[idx] = ""
+                        self.ui_translation_validations[idx] = ""
+                    if cmd.command_type == "translate_cot":
+                        if cmd.update_token_key == "translate":
+                            self.ui_translations[idx] = ""
+                        elif cmd.update_token_key == "translation_validation":
+                            self.ui_translation_validations[idx] = ""
+                    if cmd.command_type == "define":
+                        self.ui_definitions[idx] = ""
+                    if cmd.command_type == "qanda":
+                        self.ui_responses[idx] = ""
+                    self.show_qanda = cmd.command_type == "qanda"
+                    
                 self.ui_update_queue.put(UIUpdateCommand("REFRESH_STATE", self.ui_sentence, ""))
-                self.command_queue.put(self.last_command)
+                
+                # Requeue commands
+                for cmd in self.last_commands:
+                    self.command_queue.put(cmd)
 
     def stop(self):
+        # Empty the queue
         while not self.command_queue.empty():
             try:
                 self.command_queue.get_nowait()
             except Empty:
                 continue
-        request_interrupt_atomic_swap(True)
-        self.ui_update_queue.put(UIUpdateCommand("PROCESSING_STATUS", "", "END"))
+        # Invalidate the current generation of requests so they abort
+        increment_request_gen()
+        self.ui_update_queue.put(UIUpdateCommand("PROCESSING_STATUS", "", "END", tab_index=-1))
 
     def switch_view(self):
         self.show_qanda = not self.show_qanda
 
-    def perform_translation_by_style_str(self, style_str: str, api_override: str):
+    def perform_translation_by_style_str(self, style_str: str):
         try:
             style_enum = TranslationType(style_str)
-            self.perform_translation(style_enum, api_override)
+            self.perform_translation(style_enum)
         except (ValueError, InvalidTranslationTypeException):
             logging.error(f'TranslationType was invalid: {style_str}')
             raise
 
-    def perform_translation(self, style: TranslationType, api_override: str):
+    def perform_translation(self, style: TranslationType):
         self.stop()
         self.show_qanda = False
 
         if style == TranslationType.Off:
             return
-        if style in [TranslationType.Define, TranslationType.DefineWithoutAI, TranslationType.DefineAndChainOfThought]:
-            self.ui_definitions = ""
-        if style in [TranslationType.Translate, TranslationType.BestOfThree, TranslationType.TranslateAndChainOfThought]:
-            self.ui_translation = ""
-        if style in [TranslationType.ChainOfThought, TranslationType.TranslateAndChainOfThought,
-                     TranslationType.DefineAndChainOfThought]:
-            self.ui_translation_validation = ""
+
+        # Prepare UI space for all parallel tabs
+        for i in range(len(self.tab_configs)):
+            if style in [TranslationType.Define, TranslationType.DefineWithoutAI, TranslationType.DefineAndChainOfThought]:
+                self.ui_definitions[i] = ""
+            if style in [TranslationType.Translate, TranslationType.BestOfThree, TranslationType.TranslateAndChainOfThought]:
+                self.ui_translations[i] = ""
+            if style in [TranslationType.ChainOfThought, TranslationType.TranslateAndChainOfThought, TranslationType.DefineAndChainOfThought]:
+                self.ui_translation_validations[i] = ""
+        
         self.ui_update_queue.put(UIUpdateCommand("REFRESH_STATE", self.ui_sentence, ""))
 
-        self.total_ai_requests += 1
+        self.total_ai_requests += len(self.tab_configs)
+        self.last_commands = []
 
-        if style == TranslationType.Translate:
-            self.command_queue.put(MonitorCommand(
-                "translate",
-                self.ui_sentence,
-                self.history[:],
-                index=1,
-                api_override=api_override))
-        elif style == TranslationType.BestOfThree:
-            self.command_queue.put(MonitorCommand(
-                "translate",
-                self.ui_sentence,
-                self.history[:],
-                temp=settings.get_setting('translate_best_of_three.first_temperature', .7),
-                index=1,
-                api_override=api_override))
-            self.command_queue.put(MonitorCommand(
-                "translate",
-                self.ui_sentence,
-                self.history[:],
-                temp=settings.get_setting('translate_best_of_three.second_temperature', .7),
-                style="Aim for a literal translation.",
-                index=2,
-                api_override=api_override))
-            self.command_queue.put(MonitorCommand(
-                "translate",
-                self.ui_sentence,
-                self.history[:],
-                temp=settings.get_setting('translate_best_of_three.third_temperature', .7),
-                style="Aim for a natural translation.",
-                index=3,
-                api_override=api_override))
-        elif style == TranslationType.ChainOfThought:
-            self.command_queue.put(MonitorCommand(
-                "translate_cot",
-                self.ui_sentence,
-                self.history[:],
-                api_override=api_override,
-                update_token_key="translate"))
-        elif style == TranslationType.TranslateAndChainOfThought:
-            self.command_queue.put(MonitorCommand(
-                "translate",
-                self.ui_sentence,
-                self.history[:],
-                api_override=api_override))
-            self.command_queue.put(MonitorCommand(
-                "translate_cot",
-                self.ui_sentence,
-                self.history[:],
-                api_override=api_override,
-                update_token_key="translation_validation"))
-        elif style == TranslationType.Define:
-            self.command_queue.put(MonitorCommand(
-                "define",
-                self.ui_sentence,
-                [],
-                api_override=api_override))
-        elif style == TranslationType.DefineWithoutAI:
-            self.ui_definitions = get_definitions_string(self.ui_sentence)
-        elif style == TranslationType.DefineAndChainOfThought:
-            self.command_queue.put(MonitorCommand(
-                "translate_cot",
-                self.ui_sentence,
-                self.history[:],
-                api_override=api_override,
-                update_token_key="translation_validation",
-                include_readings=True))
-        else:
-            raise ValueError(f"Unhandled 'TranslationType': {style}")
+        for i, config in enumerate(self.tab_configs):
+            api_override = config.get("api_service", settings.get_setting("ai_settings.api"))
+            model_override = config.get("model_override", "")
 
-    def trigger_question(self, question: str, api_override: str):
+            if style == TranslationType.Translate:
+                cmd = MonitorCommand(
+                    "translate", self.ui_sentence, self.history[:],
+                    index=1, api_override=api_override, model_override=model_override, tab_index=i)
+                self.command_queue.put(cmd)
+                self.last_commands.append(cmd)
+            elif style == TranslationType.BestOfThree:
+                cmds = [
+                    MonitorCommand("translate", self.ui_sentence, self.history[:],
+                                   temp=settings.get_setting('translate_best_of_three.first_temperature', .7),
+                                   index=1, api_override=api_override, model_override=model_override, tab_index=i),
+                    MonitorCommand("translate", self.ui_sentence, self.history[:],
+                                   temp=settings.get_setting('translate_best_of_three.second_temperature', .7),
+                                   style="Aim for a literal translation.", index=2, 
+                                   api_override=api_override, model_override=model_override, tab_index=i),
+                    MonitorCommand("translate", self.ui_sentence, self.history[:],
+                                   temp=settings.get_setting('translate_best_of_three.third_temperature', .7),
+                                   style="Aim for a natural translation.", index=3, 
+                                   api_override=api_override, model_override=model_override, tab_index=i)
+                ]
+                for cmd in cmds:
+                    self.command_queue.put(cmd)
+                    self.last_commands.append(cmd)
+            elif style == TranslationType.ChainOfThought:
+                cmd = MonitorCommand("translate_cot", self.ui_sentence, self.history[:],
+                                     api_override=api_override, model_override=model_override, 
+                                     update_token_key="translate", tab_index=i)
+                self.command_queue.put(cmd)
+                self.last_commands.append(cmd)
+            elif style == TranslationType.TranslateAndChainOfThought:
+                cmds = [
+                    MonitorCommand("translate", self.ui_sentence, self.history[:],
+                                   api_override=api_override, model_override=model_override, tab_index=i),
+                    MonitorCommand("translate_cot", self.ui_sentence, self.history[:],
+                                   api_override=api_override, model_override=model_override, 
+                                   update_token_key="translation_validation", tab_index=i)
+                ]
+                for cmd in cmds:
+                    self.command_queue.put(cmd)
+                    self.last_commands.append(cmd)
+            elif style == TranslationType.Define:
+                cmd = MonitorCommand("define", self.ui_sentence, [],
+                                     api_override=api_override, model_override=model_override, tab_index=i)
+                self.command_queue.put(cmd)
+                self.last_commands.append(cmd)
+            elif style == TranslationType.DefineWithoutAI:
+                self.ui_definitions[i] = get_definitions_string(self.ui_sentence)
+            elif style == TranslationType.DefineAndChainOfThought:
+                cmd = MonitorCommand("translate_cot", self.ui_sentence, self.history[:],
+                                     api_override=api_override, model_override=model_override, 
+                                     update_token_key="translation_validation", include_readings=True, tab_index=i)
+                self.command_queue.put(cmd)
+                self.last_commands.append(cmd)
+
+    def trigger_question(self, question: str):
         self.stop()
         self.ui_question = question
-        self.ui_response = ""
         self.show_qanda = True
-        self.command_queue.put(MonitorCommand("qanda", self.ui_sentence, self.history[:], self.ui_question,
-                                              temp=0, api_override=api_override))
+        self.last_commands = []
+        for i, config in enumerate(self.tab_configs):
+            self.ui_responses[i] = ""
+            api_override = config.get("api_service", settings.get_setting("ai_settings.api"))
+            model_override = config.get("model_override", "")
+            cmd = MonitorCommand("qanda", self.ui_sentence, self.history[:], self.ui_question,
+                                 temp=0, api_override=api_override, model_override=model_override, tab_index=i)
+            self.command_queue.put(cmd)
+            self.last_commands.append(cmd)
 
     def trigger_breakdown(self, text: str):
         """Triggers a kanji breakdown request."""
-        # We do NOT call self.stop() here because we might want this to run
-        # while the main translation is still visible.
-        # However, track_running_request in ai_prompts enforces one AI request at a time
-        # globally. If you want true parallelism, we'd need to remove @track_running_request
-        # from the specific functions or use different locks.
-        # For now, let's stop current generation to avoid race conditions on the stdout printer.
-        self.stop()
-
-        # We use the text as the "sentence" for the command, but we won't lock the main UI to it.
-        self.command_queue.put(MonitorCommand("kanji_breakdown", text, []))
+        # Does not cancel other requests so it can be run truly in parallel
+        self.command_queue.put(MonitorCommand("kanji_breakdown", text, [], tab_index=0))
 
     def trigger_tts(self):
-        self.command_queue.put(MonitorCommand("tts", self.ui_sentence, self.history[:]))
+        self.command_queue.put(MonitorCommand("tts", self.ui_sentence, self.history[:], tab_index=0))
 
     # --- Internal Logic & Threading ---
 
     def _save_current_history_state(self):
         if self.history_states_index >= 0 and self.history_states_index <= len(self.history_states):
             self.history_states[self.history_states_index] = HistoryState(
-                self.ui_sentence, self.ui_translation, self.ui_translation_validation,
-                self.ui_definitions, self.ui_question, self.ui_response, self.history[:], self.show_qanda
+                self.ui_sentence, self.ui_translations, self.ui_translation_validations,
+                self.ui_definitions, self.ui_question, self.ui_responses, self.history[:], self.show_qanda
             )
 
     def _load_history_state_at_index(self, index):
         history_state = self.history_states[index]
         self.ui_sentence = history_state.ui_sentence
-        self.ui_translation = history_state.ui_translation
-        self.ui_translation_validation = history_state.ui_translation_validation
-        self.ui_definitions = history_state.ui_definitions
+        self.ui_translations = history_state.ui_translations.copy()
+        self.ui_translation_validations = history_state.ui_translation_validations.copy()
+        self.ui_definitions = history_state.ui_definitions.copy()
         self.ui_question = history_state.ui_question
-        self.ui_response = history_state.ui_response
-        self.history = history_state.history
+        self.ui_responses = history_state.ui_responses.copy()
+        self.history = history_state.history[:]
         self.show_qanda = history_state.show_qanda
         with self.sentence_lock:
             self.locked_sentence = self.ui_sentence
@@ -448,9 +436,8 @@ class VocabMonitorService:
         is_uniqueness_okay = next_sentence not in self.all_seen_sentences
 
         if is_length_okay and is_uniqueness_okay and interrupt_enabled:
-            # We access the property here, which checks override first, then settings
             if self.auto_action != TranslationType.Off.value:
-                self.perform_translation_by_style_str(self.auto_action, self.ai_service_name)
+                self.perform_translation_by_style_str(self.auto_action)
                 if self.max_auto_triggers > 0:
                     self.max_auto_triggers -= 1
                     if self.max_auto_triggers <= 0:
@@ -464,22 +451,22 @@ class VocabMonitorService:
         with self.sentence_lock:
             self.locked_sentence = sentence
         self.ui_sentence = sentence
-        self.ui_definitions = ""
-        self.ui_translation = ""
-        self.ui_translation_validation = ""
+        self.ui_definitions = {}
+        self.ui_translations = {}
+        self.ui_translation_validations = {}
         self.ui_question = ""
-        self.ui_response = ""
+        self.ui_responses = {}
         self.show_qanda = False
 
         if not any([(sentence in previous or previous in sentence) for previous in self.history]):
             self.history.append(sentence)
         self.history = self.history[-self.history_length:]
 
-        self.ui_update_queue.put(UIUpdateCommand("NEW_SENTENCE", self.ui_sentence, ""))
+        self.ui_update_queue.put(UIUpdateCommand("NEW_SENTENCE", self.ui_sentence, "", tab_index=-1))
 
         self.history_states.append(
-            HistoryState(self.ui_sentence, self.ui_translation, self.ui_translation_validation,
-                         self.ui_definitions, self.ui_question, self.ui_response, self.history[:], self.show_qanda)
+            HistoryState(self.ui_sentence, self.ui_translations, self.ui_translation_validations,
+                         self.ui_definitions, self.ui_question, self.ui_responses, self.history[:], self.show_qanda)
         )
         self.history_states_index = len(self.history_states) - 1
 
@@ -504,15 +491,13 @@ class VocabMonitorService:
             status_token = "START"
             if command.command_type == "kanji_breakdown":
                 status_token = "START_BREAKDOWN"
-            self.ui_update_queue.put(UIUpdateCommand("PROCESSING_STATUS", command.sentence, status_token))
+            self.ui_update_queue.put(UIUpdateCommand("PROCESSING_STATUS", command.sentence, status_token, command.tab_index))
 
             try:
                 if command.command_type not in ["kanji_breakdown"]:
                     with self.sentence_lock:
                         if command.sentence != self.locked_sentence:
                             continue
-                        if command.command_type != "translation_validation":
-                            self.last_command = command
 
                 self.check_rate_limiter()
 
@@ -524,10 +509,12 @@ class VocabMonitorService:
                         update_queue=self.ui_update_queue,
                         temp=command.temp,
                         index=command.index,
-                        api_override=command.api_override)
-                    self.ui_update_queue.put(UIUpdateCommand("translate", command.sentence, "\n"))
+                        api_override=command.api_override,
+                        model_override=command.model_override,
+                        tab_index=command.tab_index)
+                    self.ui_update_queue.put(UIUpdateCommand("translate", command.sentence, "\n", command.tab_index))
                 elif command.command_type == "translation_validation":
-                    prompt = (f"{self.ui_sentence}\n\n{self.ui_translation}\n\n"
+                    prompt = (f"{self.ui_sentence}\n\n{self.ui_translations.get(command.tab_index, '')}\n\n"
                               f"Which translation is most accurate? Or are they equivalent?")
                     command.prompt = prompt
                     self.check_rate_limiter()
@@ -537,7 +524,9 @@ class VocabMonitorService:
                                  temp=command.temp,
                                  update_queue=self.ui_update_queue,
                                  update_token_key=command.update_token_key,
-                                 api_override=command.api_override)
+                                 api_override=command.api_override,
+                                 model_override=command.model_override,
+                                 tab_index=command.tab_index)
                 elif command.command_type == "translate_cot":
                     suggested_readings = None
                     if command.include_readings:
@@ -548,8 +537,10 @@ class VocabMonitorService:
                             command.sentence,
                             temp=command.temp,
                             update_queue=self.ui_update_queue,
-                            api_override=command.api_override)
-                        self.ui_definitions = ""
+                            api_override=command.api_override,
+                            model_override=command.model_override,
+                            tab_index=command.tab_index)
+                        self.ui_definitions[command.tab_index] = ""
                     self.check_rate_limiter()
                     translate_with_context_cot(command.history,
                                                command.sentence,
@@ -557,20 +548,26 @@ class VocabMonitorService:
                                                temp=command.temp,
                                                update_token_key=command.update_token_key,
                                                api_override=command.api_override,
-                                               suggested_readings=suggested_readings)
-                    self.ui_update_queue.put(UIUpdateCommand(command.update_token_key, command.sentence, "\n"))
+                                               model_override=command.model_override,
+                                               suggested_readings=suggested_readings,
+                                               tab_index=command.tab_index)
+                    self.ui_update_queue.put(UIUpdateCommand(command.update_token_key, command.sentence, "\n", command.tab_index))
                 elif command.command_type == "define":
                     run_vocabulary_list(command.sentence,
                                         temp=command.temp,
                                         update_queue=self.ui_update_queue,
-                                        api_override=command.api_override)
+                                        api_override=command.api_override,
+                                        model_override=command.model_override,
+                                        tab_index=command.tab_index)
                 elif command.command_type == "qanda":
                     ask_question(command.prompt,
                                  command.sentence,
                                  command.history,
                                  temp=command.temp,
                                  update_queue=self.ui_update_queue,
-                                 api_override=command.api_override)
+                                 api_override=command.api_override,
+                                 model_override=command.model_override,
+                                 tab_index=command.tab_index)
                 elif command.command_type == "tts":
                     generate_tts(command.sentence)
                 elif command.command_type == "kanji_breakdown":
@@ -579,11 +576,10 @@ class VocabMonitorService:
             except Exception as e:
                 logging.error(f"Exception while running command: {e}")
             finally:
-                # Special handling for kanji_breakdown status
                 status_token = "END"
                 if command.command_type == "kanji_breakdown":
                     status_token = "END_BREAKDOWN"
-                self.ui_update_queue.put(UIUpdateCommand("PROCESSING_STATUS", command.sentence, status_token))
+                self.ui_update_queue.put(UIUpdateCommand("PROCESSING_STATUS", command.sentence, status_token, command.tab_index))
 
     def check_rate_limiter(self):
         # Hot-reload check for rate limit setting
@@ -602,10 +598,6 @@ class VocabMonitorService:
 
 
 def add_previous_lines_to_seen_lines(seen_lines: set, output_folder: str):
-    """
-    Scans all .txt files in the output folder and its subfolders for 'Previous lines:'
-    sections and adds those lines to the seen_lines set.
-    """
     for root, _, files in os.walk(output_folder):
         for file in files:
             if not file.endswith('.txt'):
@@ -660,9 +652,6 @@ def undo_repetition(text: str) -> str:
 
 
 def fix_name_repetition(text: str) -> tuple[str, str]:
-    """
-    Fixes repeated name tags in Japanese text. Assumes name tags are bracketed (like 【瑞流】)
-    """
     if text.count('】') <= 1:
         return text, ""
 

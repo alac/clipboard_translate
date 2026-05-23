@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from queue import Empty
-from typing import List, Set, Dict
+from typing import List, Set, Dict, Any
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -47,6 +47,9 @@ class BreakdownRequest(BaseModel):
     text: str
 
 
+class TabConfigList(BaseModel):
+    tabs: List[Dict[str, str]]
+
 
 # --- WebSocket Connection Manager ---
 class ConnectionManager:
@@ -76,13 +79,7 @@ async def queue_poller():
             if not update_command:
                 continue
 
-            if update_command.update_type == "REFRESH_STATE":
-                message = {
-                    "event": "STATE_UPDATE",
-                    "payload": service.get_state()
-                }
-                await manager.broadcast(json.dumps(message))
-            elif update_command.update_type == "NEW_SENTENCE":
+            if update_command.update_type in ["REFRESH_STATE", "NEW_SENTENCE"]:
                 message = {
                     "event": "STATE_UPDATE",
                     "payload": service.get_state()
@@ -91,7 +88,10 @@ async def queue_poller():
             elif update_command.update_type == "PROCESSING_STATUS":
                 message = {
                     "event": "REQUEST_STATUS_UPDATE",
-                    "payload": update_command.token  # "START" or "END"
+                    "payload": {
+                        "status": update_command.token,  # "START" or "END"
+                        "tab_index": update_command.tab_index
+                    }
                 }
                 await manager.broadcast(json.dumps(message))
             else:
@@ -101,7 +101,8 @@ async def queue_poller():
                     "payload": {
                         "update_type": update_command.update_type,
                         "sentence": update_command.sentence,
-                        "token": update_command.token
+                        "token": update_command.token,
+                        "tab_index": update_command.tab_index
                     }
                 }
                 await manager.broadcast(json.dumps(message))
@@ -151,20 +152,17 @@ async def get_system_status():
 
 @app.post("/api/action/ask")
 async def ask_a_question(request: QuestionRequest):
-    api_service = service.ai_service_name
-    service.trigger_question(request.question, api_service)
+    service.trigger_question(request.question)
     return {"status": "queued"}
 
 
 @app.post("/api/action/translate_style/{style}")
-async def trigger_translation_style(style: str, request: ConfigRequest):
+async def trigger_translation_style(style: str):
     try:
-        # The frontend sends the display name, but the service needs the internal ID
-        internal_api_id = ai_services_display_names_reverse_map()[request.value]
-        service.perform_translation_by_style_str(style, internal_api_id)
+        service.perform_translation_by_style_str(style)
         return {"status": "queued"}
-    except (InvalidTranslationTypeException, ValueError, KeyError):
-        return {"error": f"Invalid translation style or API service: {style}, {request.value}"}
+    except (InvalidTranslationTypeException, ValueError):
+        return {"error": f"Invalid translation style: {style}"}
 
 
 @app.post("/api/action/breakdown")
@@ -215,6 +213,22 @@ async def get_ai_services():
         "default_service": default_display_name
     }
 
+@app.post("/api/config/tabs")
+async def update_tabs(request: TabConfigList):
+    """Sets the active parallel tabs and their respective configurations."""
+    if service:
+        mapped_tabs = []
+        reverse_map = ai_services_display_names_reverse_map()
+        for tab in request.tabs:
+            service_display = tab.get("service", "")
+            internal_id = reverse_map.get(service_display, service_display)
+            mapped_tabs.append({
+                "api_service": internal_id,
+                "model_override": tab.get("model", "")
+            })
+        service.tab_configs = mapped_tabs
+        return {"status": "success"}
+    return {"status": "error", "detail": "Service not initialized"}
 
 @app.post("/api/config/clipboard_monitoring")
 async def set_clipboard_monitoring(request: ConfigBoolRequest):
@@ -230,12 +244,6 @@ async def set_clipboard_monitoring(request: ConfigBoolRequest):
 async def update_config(config_name: str, request: ConfigRequest):
     if config_name == "auto_action":
         service.auto_action = request.value
-    elif config_name == "ai_service":
-        try:
-            internal_id = ai_services_display_names_reverse_map()[request.value]
-            service.ai_service_name = internal_id
-        except KeyError:
-            return {"error": "Invalid AI service display name"}
     else:
         return {"error": "Invalid config name"}
     return {"status": "success"}

@@ -29,15 +29,29 @@ class ANSIColors:
 
 
 class UIUpdateCommand:
-    def __init__(self, update_type: str, sentence: str, token: str):
+    def __init__(self, update_type: str, sentence: str, token: str, tab_index: int = 0):
         self.update_type = update_type
         self.sentence = sentence
         self.token = token
+        self.tab_index = tab_index
 
 
-REQUEST_INTERRUPT_FLAG = False
-ONGOING_REQUEST = False
-REQUEST_INTERRUPT_LOCK = Lock()
+REQUEST_GEN = 0
+REQUEST_GEN_LOCK = Lock()
+
+def increment_request_gen() -> int:
+    global REQUEST_GEN
+    with REQUEST_GEN_LOCK:
+        REQUEST_GEN += 1
+        return REQUEST_GEN
+
+def get_current_request_gen() -> int:
+    with REQUEST_GEN_LOCK:
+        return REQUEST_GEN
+
+
+ONGOING_REQUESTS = 0
+ONGOING_REQUESTS_LOCK = Lock()
 
 
 class StreamingStats:
@@ -60,11 +74,12 @@ class StreamingStats:
         self.running = False
 
 
-def stats_printer(stats: StreamingStats):
+def stats_printer(stats: StreamingStats, tab_index: int):
     while stats.running:
         elapsed, tokens, rate = stats.get_stats()
+        # Avoid messy \r overlap with multiple threads by using simple print
         sys.stdout.write('\r' + ' ' * 80 + '\r')
-        sys.stdout.write(f"Streaming: {elapsed:.1f}s, {tokens} tokens ({rate:.1f} tokens/sec)")
+        sys.stdout.write(f"Streaming [Tab {tab_index}]: {elapsed:.1f}s, {tokens} tokens ({rate:.1f} tokens/sec)")
         sys.stdout.flush()
         time.sleep(0.5)
 
@@ -73,24 +88,27 @@ def stream_with_stats(
         stream_iterator: Iterator[str],
         sentence: str,
         update_queue: SimpleQueue[UIUpdateCommand],
-        update_type: str
+        update_type: str,
+        tab_index: int = 0
 ) -> Optional[str]:
-    print(f"{ANSIColors.GREEN}-ResponseStarting-\n{ANSIColors.END}", end="")
+    print(f"{ANSIColors.GREEN}-ResponseStarting [Tab {tab_index}]-\n{ANSIColors.END}", end="")
+    my_gen = get_current_request_gen()
 
     stats = StreamingStats()
-    printer_thread = threading.Thread(target=stats_printer, args=(stats,))
+    printer_thread = threading.Thread(target=stats_printer, args=(stats, tab_index))
     printer_thread.start()
 
     result = []
     try:
         last_tokens = []
         for tok in stream_iterator:
-            if request_interrupt_atomic_swap(False):
-                print(f"{ANSIColors.GREEN}-interrupted-\n{ANSIColors.END}", end="")
+            # Abort if a new interrupt generation has been started
+            if my_gen != get_current_request_gen():
+                print(f"{ANSIColors.GREEN}-interrupted [Tab {tab_index}]-\n{ANSIColors.END}", end="")
                 return None
 
             if update_queue is not None:
-                update_queue.put(UIUpdateCommand(update_type, sentence, tok))
+                update_queue.put(UIUpdateCommand(update_type, sentence, tok, tab_index))
 
             stats.add_token(tok)
             result.append(tok)
@@ -102,49 +120,38 @@ def stream_with_stats(
                 logging.warning(f"AI generated exited because of looping response: {last_tokens}")
                 return None
     except Exception as e:
-        logging.error(f"Exception: {e}")
+        logging.error(f"Exception [Tab {tab_index}]: {e}")
         if update_queue is not None:
-            update_queue.put(UIUpdateCommand(update_type, sentence, f"\nEXCEPTION: {e}"))
+            update_queue.put(UIUpdateCommand(update_type, sentence, f"\nEXCEPTION: {e}", tab_index))
     finally:
         stats.stop()
         printer_thread.join()
         sys.stdout.write('\r' + ' ' * 80 + '\r')
         sys.stdout.flush()
-    print(f"\n{ANSIColors.GREEN}-ResponseCompleted-\n{ANSIColors.END}", end="")
+    print(f"\n{ANSIColors.GREEN}-ResponseCompleted [Tab {tab_index}]-\n{ANSIColors.END}", end="")
     return ''.join(result)
 
 
-def request_interrupt_atomic_swap(new_value: bool) -> bool:
-    global REQUEST_INTERRUPT_FLAG
-    with REQUEST_INTERRUPT_LOCK:
-        old_value = REQUEST_INTERRUPT_FLAG
-        REQUEST_INTERRUPT_FLAG = new_value
-    return old_value
-
-
 def is_request_ongoing() -> bool:
-    global ONGOING_REQUEST
-    with REQUEST_INTERRUPT_LOCK:
-        old_value = ONGOING_REQUEST
-    return old_value
+    global ONGOING_REQUESTS
+    with ONGOING_REQUESTS_LOCK:
+        return ONGOING_REQUESTS > 0
 
 
 def track_running_request(func):
     """
-    A decorator that sets the global flag ONGOING_REQUEST to True before
-    executing the decorated function and sets it back to False after execution.
-    It also ensures that only one decorated function runs at a time using a lock.
+    A decorator that counts active requests to support is_request_ongoing checks.
     """
     def wrapper(*args, **kwargs):
-        global ONGOING_REQUEST
-        with REQUEST_INTERRUPT_LOCK:
-            ONGOING_REQUEST = True
+        global ONGOING_REQUESTS
+        with ONGOING_REQUESTS_LOCK:
+            ONGOING_REQUESTS += 1
         try:
             result = func(*args, **kwargs)
             return result
         finally:
-            with REQUEST_INTERRUPT_LOCK:
-                ONGOING_REQUEST = False
+            with ONGOING_REQUESTS_LOCK:
+                ONGOING_REQUESTS -= 1
     return wrapper
 
 
@@ -152,10 +159,11 @@ def track_running_request(func):
 def run_vocabulary_list(sentence: str,
                         temp: Optional[float] = None,
                         update_queue: Optional[SimpleQueue[UIUpdateCommand]] = None,
-                        api_override: Optional[str] = None) -> Optional[str]:
+                        api_override: Optional[str] = None,
+                        model_override: Optional[str] = None,
+                        tab_index: int = 0) -> Optional[str]:
     if temp is None:
         temp = settings.get_setting('define.temperature')
-    request_interrupt_atomic_swap(False)
 
     prompt_file = settings.get_setting('define.define_prompt_filepath')
     try:
@@ -174,8 +182,9 @@ def run_vocabulary_list(sentence: str,
                                          temperature=temp,
                                          ban_eos_token=False,
                                          max_response=500,
-                                         api_override=api_override)
-    return stream_with_stats(token_stream, sentence, update_queue, "define")
+                                         api_override=api_override,
+                                         model_override=model_override)
+    return stream_with_stats(token_stream, sentence, update_queue, "define", tab_index)
 
 
 def should_generate_vocabulary_list(sentence):
@@ -204,8 +213,6 @@ def run_kanji_breakdown(phrase: str,
     prompt_file = settings.get_setting('kanji_breakdown.prompt_filepath')
     stopping_strings = settings.get_setting('kanji_breakdown.stopping_strings')
 
-    request_interrupt_atomic_swap(False)
-
     try:
         template = read_file_or_throw(prompt_file)
         template_data = {
@@ -216,9 +223,9 @@ def run_kanji_breakdown(phrase: str,
         logging.error(f"Error loading prompt template: {e}")
         return None
 
-    # 2. Notify start (optional, but good for clearing UI)
+    # 2. Notify start
     if update_queue is not None:
-        update_queue.put(UIUpdateCommand("kanji_breakdown", phrase, ""))
+        update_queue.put(UIUpdateCommand("kanji_breakdown", phrase, "", tab_index=0))
 
     # 3. Run Stream
     token_stream = run_ai_request_stream(prompt,
@@ -230,17 +237,17 @@ def run_kanji_breakdown(phrase: str,
                                          api_override=api_service)
 
     # 4. Stream with stats handles the queue putting
-    return stream_with_stats(token_stream, phrase, update_queue, "kanji_breakdown")
+    return stream_with_stats(token_stream, phrase, update_queue, "kanji_breakdown", tab_index=0)
 
 
 @track_running_request
 def translate_with_context(history, sentence, temp=None, style="",
                            update_queue: Optional[SimpleQueue[UIUpdateCommand]] = None, index: int = 0,
-                           api_override: Optional[str] = None) -> Optional[str]:
+                           api_override: Optional[str] = None, model_override: Optional[str] = None,
+                           tab_index: int = 0) -> Optional[str]:
     if temp is None:
         temp = settings.get_setting('translate.temperature')
 
-    request_interrupt_atomic_swap(False)
     prompt_file = settings.get_setting('translate.translate_prompt_filepath')
     try:
         template = read_file_or_throw(prompt_file)
@@ -260,9 +267,9 @@ def translate_with_context(history, sentence, temp=None, style="",
 
     if update_queue is not None:
         if index == 0:
-            update_queue.put(UIUpdateCommand("translate", sentence, "- "))
+            update_queue.put(UIUpdateCommand("translate", sentence, "- ", tab_index))
         else:
-            update_queue.put(UIUpdateCommand("translate", sentence, f"#{index}. "))
+            update_queue.put(UIUpdateCommand("translate", sentence, f"#{index}. ", tab_index))
 
     token_stream = run_ai_request_stream(prompt,
                                          settings.get_setting('translate.stopping_strings'),
@@ -270,20 +277,22 @@ def translate_with_context(history, sentence, temp=None, style="",
                                          temperature=temp,
                                          ban_eos_token=False,
                                          max_response=4000,
-                                         api_override=api_override)
-    return stream_with_stats(token_stream, sentence, update_queue, "translate")
+                                         api_override=api_override,
+                                         model_override=model_override)
+    return stream_with_stats(token_stream, sentence, update_queue, "translate", tab_index)
 
 
 @track_running_request
 def translate_with_context_cot(history, sentence, temp=None,
                                update_queue: Optional[SimpleQueue[UIUpdateCommand]] = None,
-                               api_override: Optional[str] = None, use_examples: bool = True,
+                               api_override: Optional[str] = None, model_override: Optional[str] = None,
+                               use_examples: bool = True,
                                update_token_key: Optional[str] = 'translate',
-                               suggested_readings: Optional[str] = None) -> Optional[str]:
+                               suggested_readings: Optional[str] = None,
+                               tab_index: int = 0) -> Optional[str]:
     if temp is None:
         temp = settings.get_setting('translate_cot.temperature')
 
-    request_interrupt_atomic_swap(False)
     prompt_file = settings.get_setting('translate_cot.cot_prompt_filepath')
     examples_file = settings.get_setting('translate_cot.cot_examples_filepath')
 
@@ -333,8 +342,9 @@ def translate_with_context_cot(history, sentence, temp=None,
                                          temperature=temp,
                                          ban_eos_token=False,
                                          max_response=10000,
-                                         api_override=api_override)
-    result = stream_with_stats(token_stream, sentence, update_queue, update_token_key)
+                                         api_override=api_override,
+                                         model_override=model_override)
+    result = stream_with_stats(token_stream, sentence, update_queue, update_token_key, tab_index)
 
     if not result:
         return None
@@ -368,11 +378,10 @@ def translate_with_context_cot(history, sentence, temp=None,
 @track_running_request
 def ask_question(question: str, sentence: str, history: list[str], temp: Optional[float] = None,
                  update_queue: Optional[SimpleQueue[UIUpdateCommand]] = None, update_token_key: str = "qanda",
-                 api_override: Optional[str] = None) -> Optional[str]:
+                 api_override: Optional[str] = None, model_override: Optional[str] = None,
+                 tab_index: int = 0) -> Optional[str]:
     if temp is None:
         temp = settings.get_setting('q_and_a.temperature')
-
-    request_interrupt_atomic_swap(False)
 
     previous_lines_list = [""]
     if len(history):
@@ -381,7 +390,7 @@ def ask_question(question: str, sentence: str, history: list[str], temp: Optiona
     previous_lines = "\n".join(previous_lines_list)
 
     print(ANSIColors.GREEN, end="")
-    print("___Adding context to question\n")
+    print(f"___Adding context to question [Tab {tab_index}]\n")
     print(previous_lines)
     print("___\n")
     print(ANSIColors.END, end="")
@@ -405,8 +414,9 @@ def ask_question(question: str, sentence: str, history: list[str], temp: Optiona
                                          temperature=temp,
                                          ban_eos_token=False,
                                          max_response=10000,
-                                         api_override=api_override)
-    return stream_with_stats(token_stream, sentence, update_queue, update_token_key)
+                                         api_override=api_override,
+                                         model_override=model_override)
+    return stream_with_stats(token_stream, sentence, update_queue, update_token_key, tab_index)
 
 
 def read_file_or_throw(filepath: str) -> str:
