@@ -90,6 +90,10 @@ class VocabMonitorService:
         self.clipboard_monitoring_enabled = True
         self.total_copied_lines = 0
         self.total_ai_requests = 0
+        
+        # Debounce state for rapid skipping
+        self._pending_auto_action = False
+        self._debounce_target_time = 0.0
 
         # Tab Configs
         self.tab_configs = [{"api_service": settings.get_setting("ai_settings.api"), "model_override": ""}]
@@ -216,6 +220,7 @@ class VocabMonitorService:
         self._load_history_state_at_index(self.history_states_index)
 
     def retry(self):
+        self._pending_auto_action = False
         with self.sentence_lock:
             if self.last_commands:
                 # Clear UI components related to the last batch of commands
@@ -264,6 +269,7 @@ class VocabMonitorService:
             raise
 
     def perform_translation(self, style: TranslationType):
+        self._pending_auto_action = False
         self.stop()
         self.show_qanda = False
 
@@ -343,6 +349,7 @@ class VocabMonitorService:
                 self.last_commands.append(cmd)
 
     def trigger_question(self, question: str):
+        self._pending_auto_action = False
         self.stop()
         self.ui_question = question
         self.show_qanda = True
@@ -365,6 +372,13 @@ class VocabMonitorService:
         self.command_queue.put(MonitorCommand("tts", self.ui_sentence, self.history[:], tab_index=0))
 
     # --- Internal Logic & Threading ---
+
+    def _trigger_auto_action(self):
+        self.perform_translation_by_style_str(self.auto_action)
+        if self.max_auto_triggers > 0:
+            self.max_auto_triggers -= 1
+            if self.max_auto_triggers <= 0:
+                sys.exit(0)
 
     def _save_current_history_state(self):
         if self.history_states_index >= 0 and self.history_states_index <= len(self.history_states):
@@ -391,6 +405,14 @@ class VocabMonitorService:
         while True:
             try:
                 self._check_clipboard()
+                
+                # Check for debounced auto-action (when the user has stopped skipping)
+                if self._pending_auto_action and time.time() >= self._debounce_target_time:
+                    self._pending_auto_action = False
+                    if self.auto_action != TranslationType.Off.value:
+                        logging.info("Firing debounced auto-action.")
+                        self._trigger_auto_action()
+                        
             except pyperclip.PyperclipWindowsException as e:
                 logging.error(f"Exception from pyperclip: {e}")
             except Exception as e:
@@ -416,8 +438,9 @@ class VocabMonitorService:
         # --- New sentence detected ---
         self.total_copied_lines += 1
 
+        was_ongoing = is_request_ongoing()
         interrupt_enabled = (settings.get_setting("general.enable_interrupt", True)
-                             or not is_request_ongoing())
+                             or not was_ongoing)
         if interrupt_enabled:
             self.stop()
 
@@ -437,11 +460,18 @@ class VocabMonitorService:
 
         if is_length_okay and is_uniqueness_okay and interrupt_enabled:
             if self.auto_action != TranslationType.Off.value:
-                self.perform_translation_by_style_str(self.auto_action)
-                if self.max_auto_triggers > 0:
-                    self.max_auto_triggers -= 1
-                    if self.max_auto_triggers <= 0:
-                        sys.exit(0)
+                cooldown = settings.get_setting("general.skip_cooldown_duration", 1.0)
+                
+                # If we interrupted an ongoing request, OR we are already debouncing
+                if was_ongoing or self._pending_auto_action:
+                    self._debounce_target_time = time.time() + cooldown
+                    self._pending_auto_action = True
+                    logging.info(f"Auto-action debounced/extended for {cooldown}s.")
+                else:
+                    self._pending_auto_action = False
+                    self._trigger_auto_action()
+        else:
+            self._pending_auto_action = False
 
         if settings.get_setting("general.skip_duplicate_lines", False):
             self.all_seen_sentences.add(next_sentence.strip())

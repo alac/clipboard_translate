@@ -173,6 +173,8 @@ skip_duplicate_lines = false
 include_lines_in_output_in_duplicate_set = false
 enable_interrupt = true
 add_empty_think = true
+# When skipping lines rapidly, wait this many seconds before triggering an auto-action.
+skip_cooldown_duration = 1.0
 
 [app]
 hot_reload = true
