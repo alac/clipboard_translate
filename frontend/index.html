@@ -273,6 +273,43 @@
       .hidden {
         display: none !important;
       }
+
+      /* recent models dropdown */
+      .recent-model-item {
+        padding: 8px 12px;
+        cursor: pointer;
+        color: var(--text-color);
+        border-bottom: 1px solid var(--border-color);
+        transition: background-color 0.2s;
+      }
+      .recent-model-item:hover {
+        background-color: var(--hover-bg);
+      }
+      .recent-model-item:last-child {
+        border-bottom: none;
+      }
+      .recent-models-empty {
+        padding: 12px;
+        color: var(--text-color);
+        opacity: 0.6;
+        font-style: italic;
+        text-align: center;
+      }
+      .recent-models-dropdown {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        margin-top: 4px;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 100;
+        min-width: 250px;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+
     </style>
   </head>
   <body>
@@ -348,9 +385,17 @@
           <select id="tab-select-ai-service">
             <option>Loading...</option>
           </select>
-          
+
           <label for="tab-input-model" style="margin-left: 10px;">Model Override:</label>
-          <input id="tab-input-model" type="text" placeholder="e.g. gemini-1.5-pro" style="flex-grow: 1; max-width: 300px;">
+          <div style="position: relative; display: flex; align-items: center; gap: 4px; flex-grow: 1; max-width: 350px;">
+              <input id="tab-input-model" list="model-suggestions" type="text" placeholder="e.g. gemini-1.5-pro" style="flex-grow: 1; width: 100%;">
+              <datalist id="model-suggestions"></datalist>
+              <button id="btn-recent-models" title="Recent Models" style="padding: 6px;">🕒</button>
+
+              <div id="recent-models-dropdown" class="recent-models-dropdown hidden">
+                  <!-- dynamically populated -->
+              </div>
+          </div>
         </div>
       </div>
 
@@ -418,6 +463,13 @@
         const tabSelectAiService = document.getElementById("tab-select-ai-service");
         const tabInputModel = document.getElementById("tab-input-model");
         const tabStatusIcon = document.getElementById("tab-status-icon");
+
+        const btnRecentModels = document.getElementById("btn-recent-models");
+        const recentModelsDropdown = document.getElementById("recent-models-dropdown");
+        const modelSuggestionsDatalist = document.getElementById("model-suggestions");
+        const LS_KEY_RECENT_MODELS = "jp_vocab_recent_models";
+        let recentModels = JSON.parse(localStorage.getItem(LS_KEY_RECENT_MODELS) || "[]");
+        let lastFetchedService = null; // Used to avoid re-fetching the same service's models repeatedly
 
         const btnSwitchView = document.getElementById("btn-switch-view");
         const btnTheme = document.getElementById("btn-theme");
@@ -513,9 +565,11 @@
           const config = tabConfigs[activeTabIndex] || { service: '', model: '' };
           if (config.service) {
              tabSelectAiService.value = config.service;
+             // Trigger datalist fetch on tab switch if it's a different service
+             fetchModelsForService(config.service);
           }
           tabInputModel.value = config.model || '';
-          
+
           if (tabStatuses[activeTabIndex] === 'START') {
              tabStatusIcon.textContent = "⏳";
              tabStatusIcon.style.animation = "spin 1s infinite linear";
@@ -526,6 +580,25 @@
              tabStatusIcon.textContent = "⚙️";
              tabStatusIcon.style.animation = "none";
           }
+        };
+
+        const fetchModelsForService = async (serviceName) => {
+           if (!serviceName || serviceName === lastFetchedService) return;
+           lastFetchedService = serviceName;
+
+           modelSuggestionsDatalist.innerHTML = "";
+           const data = await api.get(`/api/config/models/${encodeURIComponent(serviceName)}`);
+
+           if (data && data.models) {
+               data.models.forEach(m => {
+                   const option = document.createElement("option");
+                   option.value = m.id;
+                   if (m.display && m.display !== m.id) {
+                       option.textContent = m.display; // Displays nicely in modern browsers alongside the value
+                   }
+                   modelSuggestionsDatalist.appendChild(option);
+               });
+           }
         };
 
         const renderTabsBar = () => {
@@ -585,10 +658,60 @@
            };
            localStorage.setItem(LS_KEY_TAB_CONFIGS, JSON.stringify(tabConfigs));
            syncTabsToBackend();
+
+           // Manage Recent Models
+           const modelVal = tabInputModel.value.trim();
+           if (modelVal) {
+               recentModels = recentModels.filter(m => m !== modelVal);
+               recentModels.unshift(modelVal);
+               if (recentModels.length > 10) recentModels.pop();
+               localStorage.setItem(LS_KEY_RECENT_MODELS, JSON.stringify(recentModels));
+           }
         };
 
-        tabSelectAiService.addEventListener("change", saveCurrentTabConfig);
+        tabSelectAiService.addEventListener("change", (e) => {
+            saveCurrentTabConfig();
+            fetchModelsForService(e.target.value);
+        });
         tabInputModel.addEventListener("input", saveCurrentTabConfig);
+
+        // --- Recent Models ---
+        const renderRecentModels = () => {
+            recentModelsDropdown.innerHTML = "";
+            if (recentModels.length === 0) {
+                const div = document.createElement("div");
+                div.className = "recent-models-empty";
+                div.textContent = "No recent models yet.";
+                recentModelsDropdown.appendChild(div);
+                return;
+            }
+            recentModels.forEach(m => {
+                const div = document.createElement("div");
+                div.className = "recent-model-item";
+                div.textContent = m;
+                div.onclick = () => {
+                    tabInputModel.value = m;
+                    saveCurrentTabConfig();
+                    recentModelsDropdown.classList.add("hidden");
+                };
+                recentModelsDropdown.appendChild(div);
+            });
+        };
+
+        btnRecentModels.onclick = (e) => {
+            e.stopPropagation();
+            recentModelsDropdown.classList.toggle("hidden");
+            if (!recentModelsDropdown.classList.contains("hidden")) {
+                renderRecentModels();
+            }
+        };
+
+        // Close dropdown when clicking outside
+        document.addEventListener("click", (e) => {
+            if (!recentModelsDropdown.contains(e.target) && e.target !== btnRecentModels) {
+                recentModelsDropdown.classList.add("hidden");
+            }
+        });
 
         // --- Status Polling for Hot Reload ---
         let lastReloadTime = null;

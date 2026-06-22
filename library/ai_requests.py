@@ -4,6 +4,7 @@ import logging
 import os
 import sseclient
 import urllib3
+import urllib.parse
 import certifi
 import time
 from pydantic import BaseModel, ValidationError, create_model
@@ -36,6 +37,8 @@ AI_SERVICES_DISPLAY_NAME = {}
 AI_SERVICES_DISPLAY_NAME_REVERSE = {}
 _last_map_update_time = 0
 
+_models_cache = {}  # dict mapping api_choice -> {"timestamp": float, "models": list}
+CACHE_TTL = 300  # Cache available models for 5 minutes
 
 def _populate_display_names_map():
     global _last_map_update_time
@@ -85,6 +88,70 @@ def get_default_model_choice() -> str:
     elif api_choice == "Gemini":
         return settings.get_setting('api_model.model')
     raise ValueError(f"Invalid ai_settings.api setting {api_choice}")
+
+
+def fetch_available_models(api_choice: str) -> list[dict]:
+    """Fetches available models from the provider's /v1/models endpoint with caching."""
+    if not api_choice.startswith("openai"):
+        return []
+
+    now = time.time()
+    if api_choice in _models_cache:
+        if now - _models_cache[api_choice]["timestamp"] < CACHE_TTL:
+            return _models_cache[api_choice]["models"]
+
+    # Try to get models_url, fallback to rewriting request_url
+    models_url = settings.get_setting(f"{api_choice}.models_url", "")
+    if not models_url:
+        req_url = settings.get_setting(f"{api_choice}.request_url", "")
+        if req_url.endswith("/v1/completions"):
+            models_url = req_url.replace("/completions", "/models")
+        elif req_url.endswith("/v1/chat/completions"):
+            models_url = req_url.replace("/chat/completions", "/models")
+        else:
+            return []
+
+    api_key = settings.get_setting(f"{api_choice}.api_key", "")
+    headers = {'Accept': 'application/json'}
+    if api_key:
+        headers['Authorization'] = f'Bearer {api_key}'
+
+    http_client = create_http_client()
+    try:
+        response = http_client.request("GET", models_url, headers=headers)
+        if response.status == 200:
+            data = json.loads(response.data.decode('utf-8'))
+            models = []
+
+            for m in data.get("data", []):
+                model_id = m.get("id", "")
+                if not model_id:
+                    continue
+
+                name = m.get("name", model_id)
+                pricing = m.get("pricing", {})
+                price_str = ""
+
+                if pricing and "prompt" in pricing:
+                    # e.g., NanoGPT includes pricing info
+                    price_str = f" (${pricing.get('prompt', 0)}/M)"
+
+                display_str = f"{name}{price_str}" if name != model_id else model_id
+
+                models.append({
+                    "id": model_id,
+                    "display": display_str
+                })
+
+            # Sort models alphabetically by ID to make browsing easier
+            models.sort(key=lambda x: x["id"])
+
+            _models_cache[api_choice] = {"timestamp": now, "models": models}
+            return models
+    except Exception as e:
+        logging.getLogger("ai_requests").error(f"Error fetching models for {api_choice}: {e}")
+
+    return []
 
 
 http = urllib3.PoolManager(

@@ -12,7 +12,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from jp_vocab_monitor import VocabMonitorService, InvalidTranslationTypeException, UIUpdateCommand
-from library.ai_requests import ai_services_display_names_map, ai_services_display_names_reverse_map
+from library.ai_requests import (ai_services_display_names_map, ai_services_display_names_reverse_map,
+                                 fetch_available_models)
 from library.settings_manager import settings
 
 # --- Setup Logging ---
@@ -212,6 +213,20 @@ async def get_ai_services():
         "services": services_map,
         "default_service": default_display_name
     }
+
+
+@app.get("/api/config/models/{service_display_name}")
+async def get_service_models(service_display_name: str):
+    """Fetches dynamically available models for a given AI service."""
+    reverse_map = ai_services_display_names_reverse_map()
+    internal_id = reverse_map.get(service_display_name)
+
+    if not internal_id:
+        return {"models": []}
+
+    models = fetch_available_models(internal_id)
+    return {"models": models}
+
 
 @app.post("/api/config/tabs")
 async def update_tabs(request: TabConfigList):

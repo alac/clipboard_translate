@@ -18,6 +18,7 @@ api = "openai_1"
 [openai_1]
 display_name = "oobabooga"
 request_url = 'http://127.0.0.1:5000/v1/completions'
+models_url = ''
 is_chat_completion = true
 context_length = 4096
 api_key = ""
@@ -29,6 +30,7 @@ is_json_schema_strict = false
 [openai_2]
 display_name = "oobabooga"
 request_url = 'http://127.0.0.1:5000/v1/completions'
+models_url = ''
 is_chat_completion = true
 context_length = 4096
 api_key = ""
@@ -40,6 +42,7 @@ is_json_schema_strict = false
 [openai_3]
 display_name = "oobabooga"
 request_url = 'http://127.0.0.1:5000/v1/completions'
+models_url = ''
 is_chat_completion = true
 context_length = 4096
 api_key = ""
@@ -51,6 +54,7 @@ is_json_schema_strict = false
 [openai_4]
 display_name = "oobabooga"
 request_url = 'http://127.0.0.1:5000/v1/completions'
+models_url = ''
 is_chat_completion = true
 context_length = 4096
 api_key = ""
