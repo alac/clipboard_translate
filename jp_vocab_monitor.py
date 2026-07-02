@@ -363,10 +363,21 @@ class VocabMonitorService:
             self.command_queue.put(cmd)
             self.last_commands.append(cmd)
 
-    def trigger_breakdown(self, text: str):
+    def trigger_breakdown(self, text: str, configs: list = None):
         """Triggers a kanji breakdown request."""
+        if not configs:
+            configs = [{"api_service": settings.get_setting("kanji_breakdown.api_service"), "model_override": ""}]
+
         # Does not cancel other requests so it can be run truly in parallel
-        self.command_queue.put(MonitorCommand("kanji_breakdown", text, [], tab_index=0))
+        for i, config in enumerate(configs):
+            api_override = config.get("api_service")
+            model_override = config.get("model_override")
+            self.command_queue.put(MonitorCommand(
+                "kanji_breakdown", text, [],
+                api_override=api_override,
+                model_override=model_override,
+                tab_index=i
+            ))
 
     def trigger_tts(self):
         self.command_queue.put(MonitorCommand("tts", self.ui_sentence, self.history[:], tab_index=0))
@@ -601,7 +612,10 @@ class VocabMonitorService:
                 elif command.command_type == "tts":
                     generate_tts(command.sentence)
                 elif command.command_type == "kanji_breakdown":
-                    run_kanji_breakdown(command.sentence, update_queue=self.ui_update_queue)
+                    run_kanji_breakdown(command.sentence, update_queue=self.ui_update_queue,
+                                        api_override=command.api_override,
+                                        model_override=command.model_override,
+                                        tab_index=command.tab_index)
 
             except Exception as e:
                 logging.error(f"Exception while running command: {e}")

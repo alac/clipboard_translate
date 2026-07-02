@@ -44,8 +44,14 @@ class ConfigBoolRequest(BaseModel):
     enabled: bool
 
 
+class BreakdownTabConfig(BaseModel):
+    service: str
+    model: str
+
+
 class BreakdownRequest(BaseModel):
     text: str
+    configs: List[BreakdownTabConfig] = []
 
 
 class TabConfigList(BaseModel):
@@ -168,7 +174,17 @@ async def trigger_translation_style(style: str):
 
 @app.post("/api/action/breakdown")
 async def trigger_breakdown(request: BreakdownRequest):
-    service.trigger_breakdown(request.text)
+    mapped_configs = []
+    reverse_map = ai_services_display_names_reverse_map()
+
+    for cfg in request.configs:
+        internal_id = reverse_map.get(cfg.service, cfg.service)
+        mapped_configs.append({
+            "api_service": internal_id,
+            "model_override": cfg.model
+        })
+
+    service.trigger_breakdown(request.text, mapped_configs)
     return {"status": "queued"}
 
 

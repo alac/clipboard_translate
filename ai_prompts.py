@@ -206,10 +206,13 @@ def should_generate_vocabulary_list(sentence):
 
 @track_running_request
 def run_kanji_breakdown(phrase: str,
-                        update_queue: Optional[SimpleQueue[UIUpdateCommand]] = None) -> Optional[str]:
+                        update_queue: Optional[SimpleQueue[UIUpdateCommand]] = None,
+                        api_override: Optional[str] = None,
+                        model_override: Optional[str] = None,
+                        tab_index: int = 0) -> Optional[str]:
     # 1. Get settings specific to breakdown
     temp = settings.get_setting('kanji_breakdown.temperature', 0.3)
-    api_service = settings.get_setting('kanji_breakdown.api_service', settings.get_setting('ai_settings.api'))
+    api_service = api_override or settings.get_setting('kanji_breakdown.api_service', settings.get_setting('ai_settings.api'))
     prompt_file = settings.get_setting('kanji_breakdown.prompt_filepath')
     stopping_strings = settings.get_setting('kanji_breakdown.stopping_strings')
 
@@ -225,7 +228,7 @@ def run_kanji_breakdown(phrase: str,
 
     # 2. Notify start
     if update_queue is not None:
-        update_queue.put(UIUpdateCommand("kanji_breakdown", phrase, "", tab_index=0))
+        update_queue.put(UIUpdateCommand("kanji_breakdown", phrase, "", tab_index=tab_index))
 
     # 3. Run Stream
     token_stream = run_ai_request_stream(prompt,
@@ -234,10 +237,11 @@ def run_kanji_breakdown(phrase: str,
                                          temperature=temp,
                                          ban_eos_token=False,
                                          max_response=4096,
-                                         api_override=api_service)
+                                         api_override=api_service,
+                                         model_override=model_override)
 
     # 4. Stream with stats handles the queue putting
-    return stream_with_stats(token_stream, phrase, update_queue, "kanji_breakdown", tab_index=0)
+    return stream_with_stats(token_stream, phrase, update_queue, "kanji_breakdown", tab_index=tab_index)
 
 
 @track_running_request

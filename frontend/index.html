@@ -369,6 +369,7 @@
           <label for="input-breakdown" style="margin-left: 10px;">Kanji Breakdown:</label>
           <input id="input-breakdown" type="text" placeholder="Select or type..." style="width: 150px;">
           <button id="btn-breakdown-go" title="Analyze Kanji">➡️</button>
+          <button id="btn-breakdown-settings" title="Kanji Breakdown Settings">⚙️</button>
         </div>
       </div>
 
@@ -427,15 +428,37 @@
       </div>
     </div>
     
+    <!-- Kanji Breakdown Settings Modal -->
+    <div id="breakdown-settings-modal" class="modal-backdrop hidden">
+      <div class="modal-content" style="max-width: 600px;">
+        <h2>Kanji Breakdown Settings</h2>
+        <div class="button-group" style="margin-bottom: 10px;">
+          <label for="input-breakdown-parallel">Parallel Requests:</label>
+          <input id="input-breakdown-parallel" type="number" min="1" max="10" value="1" style="width: 50px;">
+        </div>
+        <div id="breakdown-settings-rows" style="display: flex; flex-direction: column; gap: 8px;">
+          <!-- Dynamically populated rows -->
+        </div>
+        <div class="button-group" style="justify-content: flex-end; margin-top: 15px;">
+          <button id="btn-breakdown-settings-close">Done</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Kanji Breakdown Modal -->
     <div id="breakdown-modal" class="modal-backdrop hidden">
-        <div class="modal-content">
+        <div class="modal-content" style="height: 80vh; max-height: 800px;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
              <h2 style="margin:0;">Kanji Breakdown</h2>
              <button id="btn-breakdown-close-x" style="border:none; background:transparent; font-size:1.5em; cursor:pointer; color:var(--text-color);">×</button>
           </div>
-          <div id="breakdown-content" class="modal-body-scroll"></div>
-          <div class="button-group" style="justify-content: flex-end;">
+          <div id="breakdown-tabs-bar" class="tabs-bar" style="border-radius: 6px 6px 0 0; background-color: var(--secondary-bg);">
+            <!-- Dynamic Tabs Go Here -->
+          </div>
+          <div id="breakdown-content-container" style="display:flex; flex-direction:column; flex-grow:1; min-height: 200px;">
+             <!-- Dynamic .modal-body-scroll divs go here -->
+          </div>
+          <div class="button-group" style="justify-content: flex-end; margin-top: auto;">
             <button id="btn-breakdown-copy">📋 Copy</button>
             <button id="btn-breakdown-close">Close</button>
           </div>
@@ -449,10 +472,25 @@
         // Modal Elements
         const historyModal = document.getElementById("history-modal");
         const historyTextarea = document.getElementById("history-textarea");
+
+        // Breakdown Elements
         const breakdownModal = document.getElementById("breakdown-modal");
-        const breakdownContent = document.getElementById("breakdown-content");
+        const breakdownContentContainer = document.getElementById("breakdown-content-container");
+        const breakdownTabsBar = document.getElementById("breakdown-tabs-bar");
         const breakdownInput = document.getElementById("input-breakdown");
         const btnBreakdownGo = document.getElementById("btn-breakdown-go");
+        const btnBreakdownSettings = document.getElementById("btn-breakdown-settings");
+        const breakdownSettingsModal = document.getElementById("breakdown-settings-modal");
+        const breakdownSettingsRows = document.getElementById("breakdown-settings-rows");
+        const inputBreakdownParallel = document.getElementById("input-breakdown-parallel");
+
+        const LS_KEY_BREAKDOWN_PARALLEL = "jp_vocab_breakdown_parallel";
+        const LS_KEY_BREAKDOWN_CONFIGS = "jp_vocab_breakdown_configs";
+
+        let breakdownParallelCount = parseInt(localStorage.getItem(LS_KEY_BREAKDOWN_PARALLEL) || "1", 10);
+        let breakdownConfigs = JSON.parse(localStorage.getItem(LS_KEY_BREAKDOWN_CONFIGS) || "[]");
+        let breakdownActiveTabIndex = 0;
+        let breakdownTabStatuses = {}; // i: 'START', 'END'
 
         // Tab and Config Elements
         const autoActionSelect = document.getElementById("select-auto-action");
@@ -582,23 +620,33 @@
           }
         };
 
+        const modelCache = {};
+        const getCachedModelsForService = async (serviceName) => {
+            if (!serviceName) return [];
+            if (modelCache[serviceName]) return modelCache[serviceName];
+            const data = await api.get(`/api/config/models/${encodeURIComponent(serviceName)}`);
+            if (data && data.models) {
+                modelCache[serviceName] = data.models;
+                return data.models;
+            }
+            return [];
+        };
+
         const fetchModelsForService = async (serviceName) => {
            if (!serviceName || serviceName === lastFetchedService) return;
            lastFetchedService = serviceName;
 
            modelSuggestionsDatalist.innerHTML = "";
-           const data = await api.get(`/api/config/models/${encodeURIComponent(serviceName)}`);
+           const models = await getCachedModelsForService(serviceName);
 
-           if (data && data.models) {
-               data.models.forEach(m => {
-                   const option = document.createElement("option");
-                   option.value = m.id;
-                   if (m.display && m.display !== m.id) {
-                       option.textContent = m.display; // Displays nicely in modern browsers alongside the value
-                   }
-                   modelSuggestionsDatalist.appendChild(option);
-               });
-           }
+           models.forEach(m => {
+               const option = document.createElement("option");
+               option.value = m.id;
+               if (m.display && m.display !== m.id) {
+                   option.textContent = m.display;
+               }
+               modelSuggestionsDatalist.appendChild(option);
+           });
         };
 
         const renderTabsBar = () => {
@@ -866,8 +914,11 @@
               
               if (update_type === "kanji_breakdown") {
                   breakdownModal.classList.remove("hidden");
-                  breakdownContent.innerText += token;
-                  breakdownContent.scrollTop = breakdownContent.scrollHeight;
+                  const contentDiv = document.getElementById(`breakdown-content-${tab_index}`);
+                  if (contentDiv) {
+                      contentDiv.innerText += token;
+                      contentDiv.scrollTop = contentDiv.scrollHeight;
+                  }
               }
               else if (update_sentence === state.sentence) {
                 const newState = { ...state };
@@ -893,8 +944,14 @@
                   }
               } else if (status === "START_BREAKDOWN") {
                  btnBreakdownGo.classList.add("loading-spinner");
+                 breakdownTabStatuses[tab_index] = 'START';
+                 renderBreakdownTabsBar();
               } else if (status === "END_BREAKDOWN") {
-                 btnBreakdownGo.classList.remove("loading-spinner");
+                 breakdownTabStatuses[tab_index] = 'END';
+                 renderBreakdownTabsBar();
+                 if (Object.values(breakdownTabStatuses).every(s => s === 'END')) {
+                     btnBreakdownGo.classList.remove("loading-spinner");
+                 }
               } else {
                  tabStatuses[tab_index] = status;
               }
@@ -924,6 +981,12 @@
 
           // Ensure configs have a valid default service if empty
           tabConfigs.forEach(cfg => {
+             if (!cfg.service || !Object.values(servicesMap).includes(cfg.service)) {
+                 cfg.service = defaultServiceDisplayName;
+             }
+          });
+
+          breakdownConfigs.forEach(cfg => {
              if (!cfg.service || !Object.values(servicesMap).includes(cfg.service)) {
                  cfg.service = defaultServiceDisplayName;
              }
@@ -1005,6 +1068,183 @@
           historyModal.classList.add("hidden");
           
         // --- Kanji Breakdown Logic ---
+        inputBreakdownParallel.value = breakdownParallelCount;
+
+        const saveBreakdownConfigs = () => {
+            localStorage.setItem(LS_KEY_BREAKDOWN_CONFIGS, JSON.stringify(breakdownConfigs));
+        };
+
+        const renderBreakdownTabsBar = () => {
+            if (breakdownParallelCount <= 1) {
+                breakdownTabsBar.classList.add("hidden");
+                breakdownActiveTabIndex = 0;
+            } else {
+                breakdownTabsBar.classList.remove("hidden");
+                breakdownTabsBar.innerHTML = "";
+
+                for (let i = 0; i < breakdownParallelCount; i++) {
+                    const btn = document.createElement("button");
+                    btn.className = `tab-btn ${i === breakdownActiveTabIndex ? "active" : ""}`;
+
+                    const cfg = breakdownConfigs[i] || {};
+                    let label = cfg.service || "Tab " + (i + 1);
+                    if (cfg.model) {
+                        const parts = cfg.model.split("/");
+                        label = parts[parts.length - 1];
+                    }
+
+                    let statusIcon = "⚙️";
+                    if (breakdownTabStatuses[i] === 'START') statusIcon = "⏳";
+                    else if (breakdownTabStatuses[i] === 'END') statusIcon = "✅";
+
+                    btn.textContent = `${label} ${statusIcon}`;
+                    btn.onclick = () => {
+                        breakdownActiveTabIndex = i;
+                        renderBreakdownTabsBar();
+
+                        // Toggle visibility of content divs
+                        for (let j = 0; j < breakdownParallelCount; j++) {
+                            const div = document.getElementById(`breakdown-content-${j}`);
+                            if (div) {
+                                j === i ? div.classList.remove("hidden") : div.classList.add("hidden");
+                            }
+                        }
+                    };
+                    breakdownTabsBar.appendChild(btn);
+                }
+            }
+        };
+
+        const renderBreakdownSettings = () => {
+            breakdownSettingsRows.innerHTML = "";
+            const defaultService = tabSelectAiService.options[0]?.value || "";
+
+            while (breakdownConfigs.length < breakdownParallelCount) {
+                breakdownConfigs.push({ service: defaultService, model: "" });
+            }
+
+            for (let i = 0; i < breakdownParallelCount; i++) {
+                const row = document.createElement("div");
+                row.style = "display: flex; gap: 8px; align-items: center; background: var(--secondary-bg); padding: 8px; border-radius: 4px; border: 1px solid var(--border-color);";
+
+                // Service Label & Select
+                const lbl = document.createElement("span");
+                lbl.textContent = `#${i+1}:`;
+                lbl.style.fontWeight = "bold";
+
+                const serviceSelect = document.createElement("select");
+                Array.from(tabSelectAiService.options).forEach(opt => {
+                    const newOpt = document.createElement("option");
+                    newOpt.value = opt.value;
+                    newOpt.textContent = opt.textContent;
+                    serviceSelect.appendChild(newOpt);
+                });
+                serviceSelect.value = breakdownConfigs[i].service || defaultService;
+
+                // Model Input & Datalist
+                const inputWrap = document.createElement("div");
+                inputWrap.style = "position: relative; display: flex; flex-grow: 1; align-items: center; gap: 4px;";
+
+                const modelInput = document.createElement("input");
+                modelInput.type = "text";
+                modelInput.placeholder = "Model override...";
+                modelInput.value = breakdownConfigs[i].model || "";
+                modelInput.style = "flex-grow: 1;";
+                modelInput.setAttribute("list", `bd-models-${i}`);
+
+                const datalist = document.createElement("datalist");
+                datalist.id = `bd-models-${i}`;
+
+                const recentBtn = document.createElement("button");
+                recentBtn.textContent = "🕒";
+                recentBtn.title = "Recent Models";
+                recentBtn.style.padding = "4px 8px";
+
+                // Populating Datalist
+                const updateDatalist = async (svc) => {
+                    datalist.innerHTML = "";
+                    const models = await getCachedModelsForService(svc);
+                    models.forEach(m => {
+                        const opt = document.createElement("option");
+                        opt.value = m.id;
+                        if (m.display && m.display !== m.id) opt.textContent = m.display;
+                        datalist.appendChild(opt);
+                    });
+                };
+                updateDatalist(serviceSelect.value);
+
+                // Events to save state
+                serviceSelect.onchange = () => {
+                    breakdownConfigs[i].service = serviceSelect.value;
+                    updateDatalist(serviceSelect.value);
+                    saveBreakdownConfigs();
+                };
+
+                modelInput.oninput = () => {
+                    breakdownConfigs[i].model = modelInput.value;
+                    saveBreakdownConfigs();
+                };
+
+                // Recent models shared dropdown binding
+                recentBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    recentModelsDropdown.classList.toggle("hidden");
+                    if (!recentModelsDropdown.classList.contains("hidden")) {
+                        recentModelsDropdown.innerHTML = "";
+                        if (recentModels.length === 0) {
+                            const div = document.createElement("div");
+                            div.className = "recent-models-empty";
+                            div.textContent = "No recent models yet.";
+                            recentModelsDropdown.appendChild(div);
+                        } else {
+                            recentModels.forEach(m => {
+                                const div = document.createElement("div");
+                                div.className = "recent-model-item";
+                                div.textContent = m;
+                                div.onclick = () => {
+                                    modelInput.value = m;
+                                    breakdownConfigs[i].model = m;
+                                    saveBreakdownConfigs();
+                                    recentModelsDropdown.classList.add("hidden");
+                                };
+                                recentModelsDropdown.appendChild(div);
+                            });
+                        }
+                        // Append it near the button inside the wrapper so positioning works
+                        inputWrap.appendChild(recentModelsDropdown);
+                    }
+                };
+
+                inputWrap.appendChild(modelInput);
+                inputWrap.appendChild(datalist);
+                inputWrap.appendChild(recentBtn);
+
+                row.appendChild(lbl);
+                row.appendChild(serviceSelect);
+                row.appendChild(inputWrap);
+                breakdownSettingsRows.appendChild(row);
+            }
+        };
+
+        btnBreakdownSettings.onclick = () => {
+            renderBreakdownSettings();
+            breakdownSettingsModal.classList.remove("hidden");
+        };
+
+        document.getElementById("btn-breakdown-settings-close").onclick = () => {
+            breakdownSettingsModal.classList.add("hidden");
+        };
+
+        inputBreakdownParallel.addEventListener("change", () => {
+            let count = parseInt(inputBreakdownParallel.value, 10);
+            if (isNaN(count) || count < 1) count = 1;
+            if (count > 10) count = 10;
+            inputBreakdownParallel.value = count;
+            breakdownParallelCount = count;
+            localStorage.setItem(LS_KEY_BREAKDOWN_PARALLEL, count);
+            renderBreakdownSettings();
+        });
+
         const triggerBreakdown = () => {
             let text = breakdownInput.value.trim();
             if (!text) {
@@ -1019,9 +1259,26 @@
                 setTimeout(() => breakdownInput.style.borderColor = "", 500);
                 return;
             }
-            breakdownContent.innerText = "";
+
+            // Re-initialize DOM structure for output
+            breakdownTabStatuses = {};
+            breakdownActiveTabIndex = 0;
+            breakdownContentContainer.innerHTML = "";
+
+            for (let i = 0; i < breakdownParallelCount; i++) {
+                const div = document.createElement("div");
+                div.id = `breakdown-content-${i}`;
+                div.className = "modal-body-scroll";
+                if (i !== 0) div.classList.add("hidden");
+                breakdownContentContainer.appendChild(div);
+            }
+
+            renderBreakdownTabsBar();
             breakdownModal.classList.remove("hidden");
-            api.post("/api/action/breakdown", { text: text });
+
+            // Build payload based on actual requested count
+            const payloadConfigs = breakdownConfigs.slice(0, breakdownParallelCount);
+            api.post("/api/action/breakdown", { text: text, configs: payloadConfigs });
         };
 
         btnBreakdownGo.onclick = triggerBreakdown;
@@ -1034,12 +1291,15 @@
         document.getElementById("btn-breakdown-close-x").onclick = closeBreakdown;
         
         document.getElementById("btn-breakdown-copy").onclick = () => {
-            navigator.clipboard.writeText(breakdownContent.innerText).then(() => {
-                const btn = document.getElementById("btn-breakdown-copy");
-                const originalText = btn.innerText;
-                btn.innerText = "✅ Copied!";
-                setTimeout(() => btn.innerText = originalText, 1500);
-            });
+            const activeDiv = document.getElementById(`breakdown-content-${breakdownActiveTabIndex}`);
+            if (activeDiv) {
+                navigator.clipboard.writeText(activeDiv.innerText).then(() => {
+                    const btn = document.getElementById("btn-breakdown-copy");
+                    const originalText = btn.innerText;
+                    btn.innerText = "✅ Copied!";
+                    setTimeout(() => btn.innerText = originalText, 1500);
+                });
+            }
         };
         breakdownModal.addEventListener("click", (e) => {
             if (e.target === breakdownModal) closeBreakdown();
