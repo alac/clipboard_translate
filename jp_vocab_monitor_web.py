@@ -280,6 +280,11 @@ async def update_config(config_name: str, request: ConfigRequest):
     return {"status": "success"}
 
 
+@app.get("/marked.min.js")
+async def get_marked_js():
+    return FileResponse(os.path.join("frontend", "marked.min.js"))
+
+
 @app.get("/")
 async def read_root():
     return FileResponse(os.path.join("frontend", "index.html"))

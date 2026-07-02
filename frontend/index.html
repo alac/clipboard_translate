@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Jp Vocab Monitor</title>
+    <script src="marked.min.js"></script>
     <style>
       /* --- Theme Variables --- */
       :root {
@@ -168,6 +169,20 @@
         color: var(--text-color);
         line-height: 1.6;
         transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
+      }
+
+      /* Adjust Markdown spacing to prevent layout shifts */
+      .modal-body-scroll p {
+        margin-top: 0;
+        margin-bottom: 12px;
+      }
+      .modal-body-scroll p:last-child {
+        margin-bottom: 0;
+      }
+      .modal-body-scroll ul, .modal-body-scroll ol {
+        margin-top: 0;
+        margin-bottom: 12px;
+        padding-left: 24px;
       }
 
       /* --- Visual Indicators --- */
@@ -466,6 +481,14 @@
       </div>
 
     <script>
+      // Configure Markdown parser options
+      if (typeof marked !== 'undefined') {
+          marked.setOptions({
+              breaks: true, // Convert single \n to <br>
+              gfm: true     // GitHub Flavored Markdown
+          });
+      }
+
       document.addEventListener("DOMContentLoaded", () => {
         const outputArea = document.getElementById("output-area");
         
@@ -491,6 +514,7 @@
         let breakdownConfigs = JSON.parse(localStorage.getItem(LS_KEY_BREAKDOWN_CONFIGS) || "[]");
         let breakdownActiveTabIndex = 0;
         let breakdownTabStatuses = {}; // i: 'START', 'END'
+        let breakdownTexts = {};       // i: raw response text accumulated for markdown parsing
 
         // Tab and Config Elements
         const autoActionSelect = document.getElementById("select-auto-action");
@@ -801,20 +825,6 @@
             let currentDefinitions = state.definitions[activeTabIndex] || "";
             let currentValidation = state.translation_validations[activeTabIndex] || "";
 
-            function cleanTranslation(s) {
-              if (!s) return "";
-              const replacePairs = [
-                [`\n\n`, `\n`],
-                [`  * `, `  - `],
-                [`*`, ``],
-              ];
-              let newString = s;
-              for (const [find, replace] of replacePairs) {
-                newString = newString.replaceAll(find, replace);
-              }
-              const regex = /\n\s*(?:[-*•+]\s*)?Definition:\s*(.*)/gi;
-              return newString.replace(regex, ' - $1');
-            }
             function cleanThinking(s) {
               if (!s) return "";
               s = s.trim();
@@ -831,6 +841,21 @@
               return s;
             }
 
+            function cleanTranslation(s) {
+              if (!s) return "";
+              const replacePairs = [
+                [`\n\n`, `\n`],
+                [`  * `, `  - `],
+                [`*`, ``],
+              ];
+              let newString = s;
+              for (const [find, replace] of replacePairs) {
+                newString = newString.replaceAll(find, replace);
+              }
+              const regex = /\n\s*(?:[-*•+]\s*)?Definition:\s*(.*)/gi;
+              return newString.replace(regex, ' - $1');
+            }
+
             textContent = [
               state.sentence,
               cleanThinking(cleanTranslation(currentTranslation)),
@@ -841,8 +866,9 @@
               .filter(Boolean)
               .join("\n\n");
           }
+
           if (outputArea.innerText !== textContent) {
-            outputArea.innerText = textContent;
+              outputArea.innerText = textContent;
           }
         };
 
@@ -914,9 +940,15 @@
               
               if (update_type === "kanji_breakdown") {
                   breakdownModal.classList.remove("hidden");
+                  breakdownTexts[tab_index] = (breakdownTexts[tab_index] || "") + token;
+
                   const contentDiv = document.getElementById(`breakdown-content-${tab_index}`);
                   if (contentDiv) {
-                      contentDiv.innerText += token;
+                      if (typeof marked !== 'undefined') {
+                          contentDiv.innerHTML = marked.parse(breakdownTexts[tab_index]);
+                      } else {
+                          contentDiv.innerText = breakdownTexts[tab_index];
+                      }
                       contentDiv.scrollTop = contentDiv.scrollHeight;
                   }
               }
@@ -1262,6 +1294,7 @@
 
             // Re-initialize DOM structure for output
             breakdownTabStatuses = {};
+            breakdownTexts = {};
             breakdownActiveTabIndex = 0;
             breakdownContentContainer.innerHTML = "";
 
